@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Planta Keuva",
+  "version": "../package.json",
+  "identifier": "br.com.keuva.planta",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Planta Keuva",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 700
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "Productivity",
+    "copyright": "Keuva",
+    "createUpdaterArtifacts": true,
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "-"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVERDZBMkI0ODczNjA4NjEKUldSaENEYUh0S0xXWFpzbVB0d29MeVdtcmI3bEx4dHM1UUZWY05kWldwYUhidlI0cXRycWRIcFAK",
+      "endpoints": ["https://github.com/MarlonMalacarne/planta-keuva/releases/latest/download/latest.json"]
+    }
+  }
+}
