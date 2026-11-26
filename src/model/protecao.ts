@@ -1,0 +1,30 @@
+import { areasProtegidas, terreno, type AreaProtegida } from '../data/terreno'
+import { sobrepoe, type Vec2 } from '../geo/polygon'
+import { contorno, type Elemento } from './elementos'
+
+/** Contorno real no chão: o tanque é redondo, o resto é retângulo. */
+export function pegada(e: Elemento): Vec2[] {
+  if (e.tipo !== 'tanque') return contorno(e)
+  const r = e.largura / 2
+  return Array.from({ length: 24 }, (_, i) => {
+    const a = (i / 24) * Math.PI * 2
+    return [e.x + r * Math.cos(a), e.y + r * Math.sin(a)] as Vec2
+  })
+}
+
+/** Área protegida que o elemento invade, se invadir alguma. */
+export function areaInvadida(e: Elemento): AreaProtegida | undefined {
+  return poligonoInvade(pegada(e))
+}
+
+/** Área protegida que o contorno (um piso, por exemplo) toca, se tocar alguma. */
+export function poligonoInvade(p: Vec2[]): AreaProtegida | undefined {
+  if (p.length < 3) return undefined
+  return areasProtegidas.find((a) => sobrepoe(p, a.poligono))
+}
+
+/** Lote e partes onde não se coloca obra nova: recuo, reserva legal e compensação. */
+export const areasDeObra = {
+  lote: terreno.perimetro,
+  proibidas: [terreno.recuo.poligono, ...areasProtegidas.map((a) => a.poligono)],
+}

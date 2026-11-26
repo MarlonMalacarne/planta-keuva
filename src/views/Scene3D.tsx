@@ -1,12 +1,25 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
-import { Line, OrbitControls, Sky } from '@react-three/drei'
+import { useEffect, useMemo, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Environment, Line, OrbitControls, Sky } from '@react-three/drei'
+import { EffectComposer, N8AO, SMAA, ToneMapping } from '@react-three/postprocessing'
+import { ToneMappingMode } from 'postprocessing'
 import * as THREE from 'three'
-import { terreno, extensao } from '../data/terreno'
-import { centroid, rng, scatter, type Vec2 } from '../geo/polygon'
+import { areasProtegidas, terreno, extensao } from '../data/terreno'
+import { centroid, type Vec2 } from '../geo/polygon'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
 import Elementos3D from './Elementos3D'
+import { refletivos } from './Construcoes3D'
+import Arvores3D from './Arvores3D'
+import Etiqueta3D from './Etiqueta3D'
+import Pisos3D from './Pisos3D'
+import Fluxos3D from './Fluxos3D'
+import Caminhada from './Caminhada'
+import { Footprints, LogOut } from 'lucide-react'
+import { geometriaNoChao } from './chao3d'
+import { texturaDetalheChao } from './texturas3d'
+import { concluirPiso, marcarCanto } from '../state/desenho'
+import { areaInvadida, pegada } from '../model/protecao'
 
 /** Cota de referência: o 3D trabalha com alturas relativas a ela. */
 export const COTA_BASE = 770
@@ -78,31 +91,58 @@ function Terreno() {
     {/* Chão do entorno, para o modelo não "flutuar" no vazio. */}
     <mesh rotation-x={-Math.PI / 2} position={[(extensao.minX + extensao.maxX) / 2, borda, -(extensao.minY + extensao.maxY) / 2]} receiveShadow>
       <planeGeometry args={[4000, 4000]} />
-      <meshStandardMaterial color="#7d8f5c" roughness={1} />
+      <meshStandardMaterial color={COR_ENTORNO} roughness={1} onBeforeCompile={(sh) => comDetalhe(sh)} customProgramCacheKey={() => 'chao-detalhe'} />
     </mesh>
     <mesh
       geometry={geo}
       receiveShadow
+      onDoubleClick={() => ferramenta === 'piso' && concluirPiso()}
       onClick={(ev) => {
-        if (ev.delta > 4) return // foi um arrasto de câmera
-        if (ferramenta === 'cota') {
+        if (ev.delta > 4 || useEstado.getState().caminhando) return // foi um arrasto de câmera
+        if (ferramenta === 'piso') marcarCanto([ev.point.x, -ev.point.z], 1.2)
+        else if (ferramenta === 'cota') {
           const x = ev.point.x, y = -ev.point.z
           adicionarCota(Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000, Math.round(elevacao.at(x, y) * 1000) / 1000)
         } else selecionar(null)
       }}
     >
       {foto ? (
-        <meshStandardMaterial map={textura} roughness={0.95} metalness={0} />
+        <meshStandardMaterial map={textura} roughness={0.95} metalness={0} onBeforeCompile={comDetalheFoto} customProgramCacheKey={() => 'chao-foto'} />
       ) : (
-        <meshStandardMaterial color="#6f8f4e" roughness={1} />
+        <meshStandardMaterial color="#6f8f4e" roughness={1} onBeforeCompile={(sh) => comDetalhe(sh)} customProgramCacheKey={() => 'chao-detalhe'} />
       )}
     </mesh>
     </group>
   )
 }
 
+/**
+ * A foto aérea fica borrada de perto: multiplica por um ruído fino (capim, terra) em coordenadas
+ * do mundo, a cada 2,5 m e a cada 31 m, sem mexer na cor média.
+ */
+function comDetalhe(sh: THREE.WebGLProgramParametersWithUniforms, desbotarBorda = false) {
+  sh.uniforms.detalhe = { value: texturaDetalheChao() }
+  sh.uniforms.corEntorno = { value: COR_ENTORNO }
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec2 vMundo;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMundo = (modelMatrix * vec4(transformed, 1.0)).xz;')
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', '#include <common>\nvarying vec2 vMundo;\nuniform sampler2D detalhe;\nuniform vec3 corEntorno;')
+    .replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+      ${desbotarBorda ? 'float borda = smoothstep(0.0, 0.07, min(min(vMapUv.x, 1.0 - vMapUv.x), min(vMapUv.y, 1.0 - vMapUv.y)));\n      diffuseColor.rgb = mix(corEntorno, diffuseColor.rgb, borda);' : ''}
+      float fino = texture2D(detalhe, vMundo / 2.5).r;
+      float largo = texture2D(detalhe, vMundo / 31.0).g;
+      diffuseColor.rgb *= (0.8 + fino * 0.4) * (0.9 + largo * 0.2);`,
+    )
+}
+/** Cor média da borda da foto: o entorno continua nela, sem o "quadrado" da foto aparecer. */
+const COR_ENTORNO = new THREE.Color('#9ca782')
+const comDetalheFoto = (sh: THREE.WebGLProgramParametersWithUniforms) => comDetalhe(sh, true)
+
 /** Linha que acompanha o relevo, levemente acima do chão. */
-function LinhaNoChao({ pts, cor, largura = 3, fechada = false, tracejada = false }: { pts: Vec2[]; cor: string; largura?: number; fechada?: boolean; tracejada?: boolean }) {
+function LinhaNoChao({ pts, cor, largura = 3, fechada = false, tracejada = false, opacidade = 1 }: { pts: Vec2[]; cor: string; largura?: number; fechada?: boolean; tracejada?: boolean; opacidade?: number }) {
   const h = useAltura()
   const pontos = useMemo(() => {
     const lista = fechada ? [...pts, pts[0]] : pts
@@ -120,71 +160,18 @@ function LinhaNoChao({ pts, cor, largura = 3, fechada = false, tracejada = false
     out.push([lx, h(lx, ly) + 0.25, -ly])
     return out
   }, [pts, h, fechada])
-  return <Line points={pontos} color={cor} lineWidth={largura} dashed={tracejada} dashSize={2} gapSize={1.2} />
+  return <Line points={pontos} color={cor} lineWidth={largura} dashed={tracejada} dashSize={2} gapSize={1.2} transparent={opacidade < 1} opacity={opacidade} />
 }
 
-/** Superfície translúcida que acompanha o relevo (para o recuo). */
+/** Superfície translúcida que acompanha o relevo (recuo, reserva...). */
 function AreaNoChao({ pts, cor, opacidade }: { pts: Vec2[]; cor: string; opacidade: number }) {
   const h = useAltura()
-  const geo = useMemo(() => {
-    const contorno = pts.map(([x, y]) => new THREE.Vector2(x, y))
-    const tri = THREE.ShapeUtils.triangulateShape(contorno, [])
-    const pos = new Float32Array(pts.length * 3)
-    pts.forEach(([x, y], i) => pos.set([x, h(x, y) + 0.12, -y], i * 3))
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    g.setIndex(tri.flat())
-    return g
-  }, [pts, h])
+  const geo = useMemo(() => geometriaNoChao(pts, h, 0.12), [pts, h])
   useEffect(() => () => geo.dispose(), [geo])
   return (
     <mesh geometry={geo} renderOrder={1}>
       <meshBasicMaterial color={cor} transparent opacity={opacidade} side={THREE.DoubleSide} depthWrite={false} polygonOffset polygonOffsetFactor={-2} />
     </mesh>
-  )
-}
-
-/** Mata nativa: árvores instanciadas com altura, copa e tom variados. */
-function Mata() {
-  const h = useAltura()
-  const ex = useEstado((e) => e.exagero)
-  const troncos = useRef<THREE.InstancedMesh>(null)
-  const copas = useRef<THREE.InstancedMesh>(null)
-  const pontos = useMemo(() => scatter(terreno.mata.poligono, 5.5, 42), [])
-
-  useEffect(() => {
-    const r = rng(7)
-    const m = new THREE.Matrix4()
-    const q = new THREE.Quaternion()
-    const cor = new THREE.Color()
-    pontos.forEach(([x, y], i) => {
-      const alt = 7 + r() * 9
-      const raio = 2.2 + r() * 2.4
-      const base = h(x, y)
-      q.setFromEuler(new THREE.Euler(0, r() * Math.PI * 2, 0))
-      m.compose(new THREE.Vector3(x, base + alt * 0.3, -y), q, new THREE.Vector3(0.25 + r() * 0.15, alt * 0.6, 0.25 + r() * 0.15))
-      troncos.current!.setMatrixAt(i, m)
-      m.compose(new THREE.Vector3(x, base + alt * 0.72, -y), q, new THREE.Vector3(raio, raio * (0.75 + r() * 0.35), raio))
-      copas.current!.setMatrixAt(i, m)
-      cor.setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.2 + r() * 0.14)
-      copas.current!.setColorAt(i, cor)
-    })
-    troncos.current!.instanceMatrix.needsUpdate = true
-    copas.current!.instanceMatrix.needsUpdate = true
-    if (copas.current!.instanceColor) copas.current!.instanceColor.needsUpdate = true
-  }, [pontos, h, ex])
-
-  return (
-    <group>
-      <instancedMesh ref={troncos} args={[undefined, undefined, pontos.length]} castShadow>
-        <cylinderGeometry args={[1, 1.3, 1, 6]} />
-        <meshStandardMaterial color="#5b4636" roughness={1} />
-      </instancedMesh>
-      <instancedMesh ref={copas} args={[undefined, undefined, pontos.length]} castShadow receiveShadow>
-        <icosahedronGeometry args={[1, 1]} />
-        <meshStandardMaterial roughness={0.9} flatShading />
-      </instancedMesh>
-    </group>
   )
 }
 
@@ -262,6 +249,15 @@ function Cotas() {
   )
 }
 
+/** Só no desenvolvimento: deixa a cena acessível para os testes no navegador. */
+function Depuracao() {
+  const estado = useThree()
+  useEffect(() => {
+    if (import.meta.env.DEV) (window as unknown as { __cena?: unknown }).__cena = estado
+  }, [estado])
+  return null
+}
+
 function CameraInicial() {
   const { camera } = useThree()
   useEffect(() => {
@@ -271,46 +267,218 @@ function CameraInicial() {
   return null
 }
 
-const SOL = new THREE.Vector3(120, 160, 80)
+const SOL = new THREE.Vector3(120, 150, 80)
+
+/**
+ * Luz do dia: sol com sombra suave, céu e um ambiente (céu em cima, campo embaixo) que os
+ * metais e vidros refletem. Sem arquivos HDR: tudo é gerado na hora, funciona sem internet.
+ */
+function Luz() {
+  return (
+    <>
+      <Sky sunPosition={SOL.toArray()} turbidity={5} rayleigh={1.1} mieCoefficient={0.004} mieDirectionalG={0.85} />
+      <Environment resolution={256} frames={1} environmentIntensity={0.3}>
+        <Sky sunPosition={SOL.toArray()} turbidity={5} rayleigh={1.1} mieCoefficient={0.004} mieDirectionalG={0.85} />
+        <mesh position={[0, -8, 0]} rotation-x={-Math.PI / 2}>
+          <circleGeometry args={[900, 48]} />
+          <meshBasicMaterial color="#8a8b83" />
+        </mesh>
+        {/* Linha de mata no horizonte: é o que os tanques de inox refletem de lado */}
+        <mesh position={[0, 6, 0]}>
+          <cylinderGeometry args={[650, 650, 34, 48, 1, true]} />
+          <meshBasicMaterial color="#59654a" side={THREE.BackSide} />
+        </mesh>
+      </Environment>
+      <fog attach="fog" args={['#cdd9e3', 450, 1600]} />
+      <hemisphereLight args={['#dce8ff', '#5d6a45', 0.55]} />
+      <Reflexos />
+      <directionalLight
+        position={[centro[0] + SOL.x, SOL.y, -centro[1] + SOL.z]}
+        target-position={[centro[0], 0, -centro[1]]}
+        color="#fff2df"
+        intensity={2.3}
+        castShadow
+        shadow-mapSize={[4096, 4096]}
+        shadow-camera-left={-170}
+        shadow-camera-right={170}
+        shadow-camera-top={170}
+        shadow-camera-bottom={-170}
+        shadow-camera-far={700}
+        shadow-bias={-0.0002}
+        shadow-normalBias={0.04}
+        shadow-radius={3}
+      />
+    </>
+  )
+}
+
+/** Entrega o ambiente (céu) aos metais e vidros, cada um com a sua intensidade de reflexo. */
+function Reflexos() {
+  const scene = useThree((s) => s.scene)
+  useFrame(() => {
+    const env = scene.environment
+    if (!env) return
+    for (const [m, i] of refletivos)
+      if (m.envMap !== env) {
+        m.envMap = env
+        m.envMapIntensity = i
+        m.needsUpdate = true
+      }
+  })
+  return null
+}
+
+/** Sombreamento nos cantos e encontros (AO), bordas suaves e cor de cinema. */
+function Acabamento() {
+  return (
+    <EffectComposer multisampling={0}>
+      <N8AO
+        ref={(p: { configuration: { gammaCorrection: boolean } } | null) => {
+          // O tom e a correção de gama ficam no fim da cadeia, não no AO.
+          if (p) p.configuration.gammaCorrection = false
+        }}
+        aoRadius={3}
+        distanceFalloff={1.2}
+        intensity={2.2}
+        halfRes
+        quality="medium"
+      />
+      <SMAA />
+      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+    </EffectComposer>
+  )
+}
 
 /** Construções não são exageradas na vertical: só o chão sob elas acompanha o exagero. */
 function ElementosNoTerreno() {
   return <Elementos3D h={useAltura()} />
 }
 
+function ArvoresNoTerreno() {
+  return <Arvores3D h={useAltura()} />
+}
+
+function PisosNoTerreno() {
+  return <Pisos3D h={useAltura()} />
+}
+
+function FluxosNoTerreno() {
+  return <Fluxos3D h={useAltura()} />
+}
+
+function CaminhadaNoTerreno({ aoSair }: { aoSair: (alvo: [number, number, number]) => void }) {
+  return <Caminhada h={useAltura()} aoSair={aoSair} />
+}
+
+/** Reserva legal e compensação (verde, não se constrói) e a supressão autorizada (tracejada). */
+function AreasProtegidas() {
+  const h = useAltura()
+  return (
+    <group>
+      <LinhaNoChao pts={terreno.supressao.poligono} cor="#f0b070" largura={2} fechada tracejada />
+      {areasProtegidas.map((a) => {
+        const [x, y] = centroid(a.poligono)
+        return (
+          <group key={a.id}>
+            <AreaNoChao pts={a.poligono} cor="#2fbf6a" opacidade={0.3} />
+            <LinhaNoChao pts={a.poligono} cor="#3fd27a" largura={3} fechada />
+            <Etiqueta3D texto={`${a.curto} · não construir`} posicao={[x, h(x, y) + 22, -y]} fundo="rgba(22, 92, 52, 0.85)" altura={0.026} />
+          </group>
+        )
+      })}
+    </group>
+  )
+}
+
+/** Contorno vermelho em volta de elemento que ficou dentro de área protegida. */
+function Invasoes() {
+  const elementos = useProjeto((p) => p.elementos)
+  return (
+    <group>
+      {elementos.filter((e) => areaInvadida(e)).map((e) => (
+        <LinhaNoChao key={e.id} pts={pegada({ ...e, largura: e.largura + 1.5, comprimento: e.comprimento + 1.5 })} cor="#ff5a5f" largura={4} fechada />
+      ))}
+    </group>
+  )
+}
+
 export default function Scene3D() {
   const camadas = useEstado((e) => e.camadas)
   const ferramenta = useEstado((e) => e.ferramenta)
+  const caminhando = useEstado((e) => e.caminhando)
+  const realista = useEstado((e) => e.realista)
+  const tecnico = !realista
   const selecionar = useProjeto((p) => p.selecionar)
+  const [alvoOrbita, setAlvoOrbita] = useState<[number, number, number]>([centro[0], 5, -centro[1]])
+  // Saindo do 3D (ou do app), a caminhada acaba.
+  useEffect(() => () => useEstado.getState().setCaminhando(false), [])
+  const caminhar = () => {
+    useEstado.getState().setFerramenta('selecionar')
+    selecionar(null)
+    useEstado.getState().setCaminhando(true)
+  }
   return (
-    <div className="scene3d">
-      <Canvas onPointerMissed={() => selecionar(null)} className={ferramenta === 'cota' ? 'cursor-cota' : ''} shadows camera={{ fov: 45, near: 0.5, far: 5000 }} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
+    <div className={`scene3d ${caminhando ? 'caminhando' : ''}`}>
+      <Canvas
+        onPointerMissed={() => selecionar(null)}
+        className={ferramenta === 'cota' ? 'cursor-cota' : ''}
+        shadows="percentage"
+        dpr={[1, 2]}
+        camera={{ fov: 45, near: 0.5, far: 5000 }}
+        gl={{ antialias: false, stencil: false, powerPreference: 'high-performance' }}
+      >
         <CameraInicial />
-        <Sky sunPosition={SOL.toArray()} turbidity={6} rayleigh={1.2} mieCoefficient={0.004} />
-        <fog attach="fog" args={['#c9d8e6', 400, 1400]} />
-        <hemisphereLight args={['#dfeaff', '#4b5a3a', 0.8]} />
-        <directionalLight
-          position={[centro[0] + SOL.x, SOL.y, -centro[1] + SOL.z]}
-          target-position={[centro[0], 0, -centro[1]]}
-          intensity={2.2}
-          castShadow
-          shadow-mapSize={[4096, 4096]}
-          shadow-camera-left={-180}
-          shadow-camera-right={180}
-          shadow-camera-top={180}
-          shadow-camera-bottom={-180}
-          shadow-camera-far={800}
-          shadow-bias={-0.0004}
-        />
+        <Depuracao />
+        <Luz />
+        <Acabamento />
         <Terreno />
-        {camadas.divisas && <LinhaNoChao pts={terreno.perimetro} cor="#ff5a5f" largura={3} fechada />}
-        {camadas.divisas && <Marcos />}
-        {camadas.recuo && <AreaNoChao pts={terreno.recuo.poligono} cor="#ffb020" opacidade={0.35} />}
-        {camadas.mata && <Mata />}
-        {(camadas.relevo || ferramenta === 'cota') && <Cotas />}
+        {camadas.divisas && (tecnico ? <LinhaNoChao pts={terreno.perimetro} cor="#ff5a5f" largura={3} fechada /> : <LinhaNoChao pts={terreno.perimetro} cor="#ffffff" largura={1.2} fechada opacidade={0.45} />)}
+        {camadas.divisas && tecnico && <Marcos />}
+        {camadas.recuo && tecnico && <AreaNoChao pts={terreno.recuo.poligono} cor="#ffb020" opacidade={0.35} />}
+        {camadas.mata && tecnico && <AreasProtegidas />}
+        {camadas.mata && <ArvoresNoTerreno />}
+        <Invasoes />
+        <PisosNoTerreno />
+        {camadas.fluxos && <FluxosNoTerreno />}
+        {((camadas.relevo && tecnico) || ferramenta === 'cota') && <Cotas />}
         <ElementosNoTerreno />
-        <OrbitControls makeDefault target={[centro[0], 5, -centro[1]]} maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={1200} enableDamping />
+        {caminhando ? (
+          <CaminhadaNoTerreno aoSair={setAlvoOrbita} />
+        ) : (
+          <OrbitControls makeDefault target={alvoOrbita} maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={1200} enableDamping />
+        )}
       </Canvas>
+      {caminhando ? (
+        <div className="hud-caminhada vidro" role="status">
+          <span>
+            <kbd>W</kbd>
+            <kbd>A</kbd>
+            <kbd>S</kbd>
+            <kbd>D</kbd> ou setas andam
+          </span>
+          <span>Arraste para olhar</span>
+          <span>
+            <kbd>Shift</kbd> corre
+          </span>
+          <button className="botao-secundario" onClick={() => useEstado.getState().setCaminhando(false)} title="Sair (Esc)">
+            <LogOut size={15} /> Sair
+          </button>
+        </div>
+      ) : (
+        <div className="scene3d-sobre">
+          <nav className="alternador vidro" aria-label="Aparência do 3D">
+            <button className={realista ? 'ativo' : ''} onClick={() => useEstado.getState().setRealista(true)} title="Como vai ficar: materiais e luz reais, sem marcações">
+              Realista
+            </button>
+            <button className={tecnico ? 'ativo' : ''} onClick={() => useEstado.getState().setRealista(false)} title="Com recuo, áreas protegidas, marcos e cotas">
+              Técnico
+            </button>
+          </nav>
+          <button className="botao-flutuante" onClick={caminhar} title="Andar pelo terreno em primeira pessoa">
+            <Footprints size={15} /> Caminhar
+          </button>
+        </div>
+      )}
 
     </div>
   )

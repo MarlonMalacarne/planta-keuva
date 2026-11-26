@@ -11,7 +11,7 @@ export default function BarraStatus() {
           X {n(cursor.x)} · Y {n(cursor.y)} · cota <b>{n(cursor.z)} m</b>
         </span>
       ) : (
-        <span>{vista === '3d' ? 'Arraste para girar · botão direito para deslocar · role para aproximar' : 'Passe o mouse para ver a cota'}</span>
+        <span>{vista === '3d' ? 'Arraste para girar a vista · botão direito desloca · role para aproximar · clique num objeto para editar' : 'Shift + arraste seleciona várias árvores'}</span>
       )}
       <span className="versao">v{__APP_VERSION__}</span>
     </footer>

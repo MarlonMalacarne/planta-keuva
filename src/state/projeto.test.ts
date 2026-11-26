@@ -78,7 +78,7 @@ describe('lugar livre', () => {
     const { lugarLivre, contorno } = await import('../model/elementos')
     const { terreno } = await import('../data/terreno')
     const { contains } = await import('../geo/polygon')
-    const areas = { lote: terreno.perimetro, proibidas: [terreno.recuo.poligono, terreno.mata.poligono] }
+    const { areasDeObra: areas } = await import('../model/protecao')
     const p = () => useProjeto.getState()
     useProjeto.setState({ elementos: [] })
     for (const [t, w, l] of [['galpao', 30, 50], ['predio', 15, 25], ['tanque', 8, 8]] as const) {
@@ -91,5 +91,229 @@ describe('lugar livre', () => {
     const sobrepoe = (a: typeof g, b: typeof g) => Math.abs(a.x - b.x) < (a.largura + b.largura) / 2 && Math.abs(a.y - b.y) < (a.comprimento + b.comprimento) / 2
     expect(sobrepoe(g, pr)).toBe(false)
     expect(sobrepoe(g, p().elementos[2])).toBe(false)
+  })
+
+  it('não coloca obra em cima das árvores', async () => {
+    const { lugarLivre } = await import('../model/elementos')
+    const { areasDeObra } = await import('../model/protecao')
+    const { arvoresIniciais } = await import('../model/arvores')
+    const arvores = arvoresIniciais()
+    const [x, y] = lugarLivre(20, 20, [], { ...areasDeObra, arvores }, [10, 160])!
+    expect(arvores.some((t) => Math.abs(t.x - x) < 10 && Math.abs(t.y - y) < 10)).toBe(false)
+  })
+
+  it('não usa a faixa estreita da compensação, mesmo pedindo bem em cima dela', async () => {
+    const { lugarLivre } = await import('../model/elementos')
+    const { areasDeObra, areaInvadida } = await import('../model/protecao')
+    const pos = lugarLivre(30, 50, [], areasDeObra, [25.5, 90])!
+    expect(pos).not.toBeNull()
+    const g = { id: 'g', tipo: 'galpao' as const, nome: '', x: pos[0], y: pos[1], rot: 0, largura: 30, comprimento: 50, altura: 10, cor: '' }
+    expect(areaInvadida(g)).toBeUndefined()
+  })
+})
+
+describe('áreas protegidas (reserva legal e compensação)', () => {
+  const p = () => useProjeto.getState()
+  beforeEach(() => useProjeto.setState({ elementos: [], historico: [], aviso: null }))
+
+  it('não deixa mover nem esticar um elemento para dentro', () => {
+    const id = p().adicionarElemento('galpao', 60, 45)
+    p().editarElemento(id, { x: 70, y: 95 })
+    expect(p().elementos[0]).toMatchObject({ x: 60, y: 45 })
+    expect(p().aviso?.texto).toMatch(/Reserva legal/)
+    // Esticar o comprimento até entrar na reserva (começa em y = 75,4) também é recusado.
+    p().editarElemento(id, { comprimento: 80 })
+    expect(p().elementos[0].comprimento).toBe(50)
+    // Mudanças que ficam fora continuam normais.
+    p().editarElemento(id, { x: 62, cor: '#fff' })
+    expect(p().elementos[0]).toMatchObject({ x: 62, cor: '#fff' })
+  })
+
+  it('num arrasto rápido o elemento para na borda, não pula para o outro lado', () => {
+    const id = p().adicionarElemento('caixa', 70, 60)
+    // Do sul da reserva direto para o norte dela (fora do lote, mas sem tocar na reserva no destino).
+    p().editarElemento(id, { y: 140 }, false)
+    expect(p().elementos[0].y).toBe(60)
+    // Digitando no painel o destino é que conta.
+    p().editarElemento(id, { y: 140 })
+    expect(p().elementos[0].y).toBe(140)
+  })
+
+  it('a faixa de compensação também bloqueia', () => {
+    const id = p().adicionarElemento('tanque', 10, 90)
+    p().editarElemento(id, { x: 24 })
+    expect(p().elementos[0].x).toBe(10)
+    expect(p().aviso?.texto).toMatch(/compensação/)
+  })
+
+  it('quem já estava dentro pode sair', () => {
+    const id = p().adicionarElemento('caixa', 70, 100)
+    p().editarElemento(id, { x: 72 })
+    expect(p().elementos[0].x).toBe(72)
+    p().editarElemento(id, { x: 60, y: 30 })
+    expect(p().elementos[0]).toMatchObject({ x: 60, y: 30 })
+  })
+
+  it('duplicar perto da reserva põe a cópia num lugar livre', async () => {
+    const { areaInvadida } = await import('../model/protecao')
+    const id = p().adicionarElemento('predio', 60, 60)
+    const copia = p().duplicarElemento(id)!
+    const e = p().elementos.find((x) => x.id === copia)!
+    expect(areaInvadida(e)).toBeUndefined()
+  })
+})
+
+describe('esticar e girar (alças)', () => {
+  const base = { id: 'g', tipo: 'galpao' as const, nome: '', x: 0, y: 0, rot: 0, largura: 30, comprimento: 50, altura: 10, cor: '' }
+
+  it('puxar uma face mantém a face oposta parada', async () => {
+    const { esticar, contorno } = await import('../model/elementos')
+    const d = esticar(base, 'x+', 5)
+    expect(d).toMatchObject({ largura: 35, x: 2.5, y: 0 })
+    // a face oeste continua em x = -15
+    const xs = contorno({ ...base, ...d }).map((p) => p[0])
+    expect(Math.min(...xs)).toBeCloseTo(-15, 6)
+    expect(esticar(base, 'y-', 4.2)).toMatchObject({ comprimento: 54, y: -2 })
+  })
+
+  it('respeita o giro do elemento e a medida mínima', async () => {
+    const { esticar } = await import('../model/elementos')
+    // Girado 90°: a largura aponta para o norte, então puxar x+ desloca o centro em Y.
+    const d = esticar({ ...base, rot: 90 }, 'x+', 10)
+    expect(d.largura).toBe(40)
+    expect(d.x).toBeCloseTo(0, 6)
+    expect(d.y).toBeCloseTo(5, 6)
+    expect(esticar(base, 'x-', -100).largura).toBe(0.5)
+  })
+
+  it('tanque cresce em volta do centro', async () => {
+    const { esticar } = await import('../model/elementos')
+    const t = { ...base, tipo: 'tanque' as const, largura: 8, comprimento: 8 }
+    expect(esticar(t, 'x+', 1)).toEqual({ largura: 10, comprimento: 10 })
+  })
+
+  it('gira em passos de 5° e volta para 0–360', async () => {
+    const { girar, difAngulo } = await import('../model/elementos')
+    expect(girar(base, 33)).toEqual({ rot: 35 })
+    expect(girar({ ...base, rot: 350 }, 22, 1)).toEqual({ rot: 12 })
+    expect(difAngulo(170, -170)).toBe(20)
+  })
+})
+
+describe('árvores', () => {
+  beforeEach(() => useProjeto.getState().restaurarArvores())
+
+  it('ficam as árvores protegidas e as da mata fora do pedido de corte', async () => {
+    const { protegida, naMataMantida, naAreaDeCorte } = await import('../model/arvores')
+    const { arvores } = useProjeto.getState()
+    expect(arvores.filter(protegida).length).toBeGreaterThan(100)
+    expect(arvores.filter(naMataMantida).length).toBeGreaterThan(80)
+    expect(arvores.every((a) => protegida(a) || naMataMantida(a))).toBe(true)
+    expect(arvores.some(naAreaDeCorte)).toBe(false)
+    expect(new Set(arvores.map((a) => a.id)).size).toBe(arvores.length)
+    // na emenda entre reserva/compensação e mata, nenhuma nasce encostada na outra
+    const protegidas = arvores.filter(protegida)
+    for (const a of arvores.filter(naMataMantida)) for (const b of protegidas) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(4)
+  })
+
+  it('move um grupo, apaga e desfaz', () => {
+    const p = () => useProjeto.getState()
+    const [a, b] = p().arvores
+    p().editarArvores({ [a.id]: { x: a.x + 3 }, [b.id]: { x: b.x + 3 } })
+    expect(p().arvores[0].x).toBeCloseTo(a.x + 3, 6)
+    const n = p().arvores.length
+    p().selecionar({ tipo: 'arvores', ids: [a.id, b.id] })
+    p().removerArvores([a.id, b.id])
+    expect(p().arvores).toHaveLength(n - 2)
+    expect(p().selecao).toBeNull()
+    p().desfazer()
+    expect(p().arvores).toHaveLength(n)
+    p().desfazer()
+    expect(p().arvores[0].x).toBeCloseTo(a.x, 6)
+  })
+
+  it('adiciona uma árvore nova com id livre', () => {
+    const p = () => useProjeto.getState()
+    const n = p().arvores.length
+    const id = p().adicionarArvore(60, 40)
+    expect(p().arvores).toHaveLength(n + 1)
+    expect(p().selecao).toEqual({ tipo: 'arvores', ids: [id] })
+  })
+
+  it('quem já usava a versão 0.2.0 mantém cotas e elementos e ganha as árvores', async () => {
+    const { migrarProjeto } = await import('./projeto')
+    const migrado = migrarProjeto({ cotas: [{ id: 'P1', x: 0, y: 0, z: 1 }], elementos: [{ id: 'E1' }] }, 2)
+    expect(migrado.cotas).toHaveLength(1)
+    expect(migrado.elementos).toHaveLength(1)
+    expect(migrado.arvores.length).toBeGreaterThan(100)
+  })
+
+  it('da mata inteira (v3) saem só as árvores do pedido de corte', async () => {
+    const { migrarProjeto } = await import('./projeto')
+    const na = (id: string, x: number, y: number) => ({ id, x, y, altura: 9, copa: 6 })
+    // reserva, compensação, supressão, mata fora do corte, campo aberto
+    const arvores = [na('T1', 70, 100), na('T2', 25, 90), na('T3', -20, 120), na('T4', 0, 160), na('T5', 60, 40)]
+    expect(migrarProjeto({ arvores }, 3).arvores.map((a) => a.id)).toEqual(['T1', 'T2', 'T4', 'T5'])
+    // Da versão 5 em diante, as árvores salvas ficam como estão.
+    expect(migrarProjeto({ arvores }, 5).arvores).toHaveLength(5)
+  })
+
+  it('quem estava na v4 (só protegidas) ganha de volta a mata fora do corte', async () => {
+    const { migrarProjeto } = await import('./projeto')
+    const { arvoresProtegidas, naMataMantida } = await import('../model/arvores')
+    const salvas = arvoresProtegidas().slice(0, 50)
+    const migrado = migrarProjeto({ arvores: salvas }, 4).arvores
+    expect(migrado.slice(0, 50)).toEqual(salvas)
+    expect(migrado.slice(50).every(naMataMantida)).toBe(true)
+    expect(migrado.length).toBeGreaterThan(130)
+    expect(new Set(migrado.map((a) => a.id)).size).toBe(migrado.length)
+  })
+})
+
+describe('pisos (chão pintado)', () => {
+  const p = () => useProjeto.getState()
+  beforeEach(() => useProjeto.setState({ pisos: [], elementos: [], historico: [], aviso: null, selecao: null }))
+
+  it('desenha clicando nos cantos e conclui clicando no primeiro', async () => {
+    const { useEstado } = await import('./store')
+    const { marcarCanto } = await import('./desenho')
+    useEstado.getState().setFerramenta('piso')
+    useEstado.getState().setMaterialPiso('cascalho')
+    for (const c of [[40, 20], [70, 20], [70, 40], [40, 40]] as [number, number][]) marcarCanto(c, 0.5)
+    expect(useEstado.getState().rascunho).toHaveLength(4)
+    marcarCanto([40.2, 20.1], 0.5)
+    const [piso] = p().pisos
+    expect(piso).toMatchObject({ material: 'cascalho', nome: 'Cascalho 1' })
+    const { areaPiso } = await import('../model/pisos')
+    expect(areaPiso(piso)).toBeCloseTo(600, 6)
+    expect(p().selecao).toEqual({ tipo: 'piso', id: piso.id })
+    expect(useEstado.getState().ferramenta).toBe('selecionar')
+    expect(useEstado.getState().rascunho).toHaveLength(0)
+  })
+
+  it('edita, apaga e desfaz', () => {
+    const id = p().adicionarPiso('asfalto', [[0, 10], [20, 10], [20, 20]])!
+    p().editarPiso(id, { material: 'concreto' })
+    expect(p().pisos[0].material).toBe('concreto')
+    p().removerPiso(id)
+    expect(p().pisos).toHaveLength(0)
+    p().desfazer()
+    expect(p().pisos[0].material).toBe('concreto')
+    p().desfazer()
+    expect(p().pisos[0].material).toBe('asfalto')
+  })
+
+  it('não pavimenta a reserva nem a compensação', () => {
+    expect(p().adicionarPiso('asfalto', [[60, 70], [80, 70], [80, 90], [60, 90]])).toBeNull()
+    expect(p().aviso?.texto).toMatch(/Reserva legal/)
+    const id = p().adicionarPiso('asfalto', [[60, 40], [80, 40], [80, 60], [60, 60]])!
+    // arrastar para dentro da reserva para na borda
+    p().editarPiso(id, { pontos: [[60, 140], [80, 140], [80, 160], [60, 160]] }, false)
+    expect(p().pisos[0].pontos[0]).toEqual([60, 40])
+  })
+
+  it('projetos antigos ganham a lista de pisos vazia', async () => {
+    const { migrarProjeto } = await import('./projeto')
+    expect(migrarProjeto({ cotas: [], elementos: [], arvores: [] }, 5).pisos).toEqual([])
   })
 })

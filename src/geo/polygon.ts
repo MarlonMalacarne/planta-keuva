@@ -82,3 +82,19 @@ export function scatter(poly: Vec2[], spacing: number, seed = 1): Vec2[] {
   }
   return out
 }
+
+const orient = (a: Vec2, b: Vec2, c: Vec2) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+/** Os segmentos ab e cd se cruzam (sem contar quando só encostam). */
+function cruzam(a: Vec2, b: Vec2, c: Vec2, d: Vec2) {
+  return orient(a, b, c) * orient(a, b, d) < 0 && orient(c, d, a) * orient(c, d, b) < 0
+}
+
+/** Os dois polígonos têm alguma parte em comum (um dentro do outro também conta). */
+export function sobrepoe(a: Vec2[], b: Vec2[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length]
+    for (let j = 0; j < b.length; j++) if (cruzam(p, q, b[j], b[(j + 1) % b.length])) return true
+  }
+  return a.some((p) => contains(b, p)) || b.some((p) => contains(a, p))
+}

@@ -8,16 +8,40 @@ e (nos próximos passos) terraplanagem, modelagem, importação de modelos e ges
 - **Terreno em escala real**: as divisas foram vetorizadas da foto aérea do levantamento.
   Os lados conferem com as medidas com erro menor que 10 cm, e a área calculada é 20.192 m²
   (foto: 20.200 m²).
-- **Restrições**: faixa de recuo de 5 m junto à rodovia (cerca de 980 m²) e a área de mata (aproximada).
+- **Restrições**: faixa de recuo de 5 m junto à rodovia (cerca de 980 m²), reserva legal (0,4 ha) e
+  área de compensação ambiental (600 m²) do laudo agronômico. Na reserva e na compensação o app não
+  deixa construir: o elemento para na borda e aparece um aviso. A área de supressão autorizada dos
+  ligustros (0,49 ha) aparece tracejada.
 - **Relevo**: curvas de nível e 3D a partir dos pontos de cota, com exagero vertical ajustável.
 - **Cotas à mão**: escolha a ferramenta de cota (ícone de mira ou tecla `C`), clique no terreno
   onde mediu e digite o nível no painel. O relevo, as curvas e o 3D mudam na hora. Na planta 2D,
   arraste um ponto para movê-lo. Tudo fica salvo no seu Mac.
 - **Elementos da obra**: em **Adicionar**, coloque galpão, prédio, tanque/silo, muro ou bloco.
-  O app escolhe um lugar livre dentro do lote, fora do recuo e da mata.
+  O app escolhe um lugar livre dentro do lote, fora do recuo e das áreas protegidas.
 - **Selecionar e editar**: clique num elemento (no 3D, na planta ou na lista à esquerda).
-  Arraste as setas para mover, use `R` para girar e `E` para redimensionar, ou digite posição,
-  giro e medidas exatas no painel da direita. `Cmd+D` duplica, `Delete` apaga, `Cmd+Z` desfaz.
+  Arraste o elemento para mover, puxe as setas azuis para esticar uma face (a face oposta fica
+  parada), a seta de cima para a altura e o anel para girar. Shift deixa os passos finos. Também
+  dá para digitar posição, giro e medidas exatas no painel da direita. `Cmd+D` duplica,
+  `Delete` apaga, `Cmd+Z` desfaz.
+- **Árvores**: ficam as da reserva legal, da compensação e da mata fora do pedido de corte; saem
+  só as da área de supressão. Cada árvore é um objeto. Clique para selecionar, Shift + clique para somar,
+  Shift + arraste na planta para pegar uma área. Arraste para mover, `Delete` apaga.
+- **Pintar o chão**: ferramenta do rolinho (tecla `P`) ou Adicionar > Piso. Escolha asfalto,
+  cascalho, concreto, bloquete, grama ou terra e clique nos cantos (clique duplo ou `Enter`
+  conclui; Shift + arraste faz um retângulo). O painel mostra área e perímetro.
+- **Portão e caminhos**: em Adicionar há o portão de correr. Os caminhos das carretas aparecem
+  como linhas com setas no sentido em que se anda (camada "Fluxo das carretas"). Clique num
+  caminho para selecionar e arraste os pontos para mudar o trajeto; Option + clique tira um ponto.
+- **Proposta da vinícola**: em Propostas, no painel da esquerda, "Carregar proposta" monta um
+  layout completo: pavilhão de 1.800 m², 50 tanques de 4,5 m e 100 de 2,5 m, portão com guarita
+  e duas balanças, pátio e vias de asfalto, rotatória e retorno para carretas, e o fluxo das
+  carretas de uva e das carretas-tanque. Tudo fora do recuo, da reserva, da compensação e da mata
+  que fica. Depois de carregar, cada peça é editável; `Cmd+Z` volta ao que havia antes.
+- **3D realista**: luz do dia com sombras, reflexo do céu no inox e nos vidros, pavilhão com
+  telha metálica, portas e claraboias, asfalto e concreto com textura. O botão **Técnico** volta
+  a mostrar recuo, áreas protegidas, marcos e cotas.
+- **Caminhar**: no 3D, o botão "Caminhar" coloca você no terreno em primeira pessoa. `W A S D`
+  ou setas andam, arrastar olha em volta, Shift corre, `Esc` sai.
 - **Atualização automática**: ao abrir, o app procura versão nova e se instala com um clique.
 
 ## Instalar no Mac

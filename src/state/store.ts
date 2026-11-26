@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { Vec2 } from '../geo/polygon'
+import type { MaterialPiso } from '../model/pisos'
 
 export type Vista = '2d' | '3d'
-export type Ferramenta = 'selecionar' | 'girar' | 'escala' | 'cota'
+export type Ferramenta = 'selecionar' | 'cota' | 'piso'
 
 export interface Camadas {
   foto: boolean
@@ -10,14 +12,16 @@ export interface Camadas {
   recuo: boolean
   mata: boolean
   relevo: boolean
+  fluxos: boolean
 }
 
 export const nomesCamadas: Record<keyof Camadas, string> = {
   foto: 'Foto aérea',
   divisas: 'Divisas e medidas',
   recuo: 'Recuo de 5 m',
-  mata: 'Mata',
+  mata: 'Reserva e árvores',
   relevo: 'Relevo e cotas',
+  fluxos: 'Fluxo das carretas',
 }
 
 interface Estado {
@@ -26,12 +30,23 @@ interface Estado {
   exagero: number
   intervaloCurvas: number
   ferramenta: Ferramenta
+  /** Material escolhido na ferramenta de pintar o chão e os cantos já marcados. */
+  materialPiso: MaterialPiso
+  rascunho: Vec2[]
+  /** Andando pelo terreno em primeira pessoa (só no 3D). */
+  caminhando: boolean
+  /** 3D realista (sem as marcações técnicas: recuo, áreas, marcos) ou técnico. */
+  realista: boolean
   cursor: { x: number; y: number; z: number } | null
   setVista: (v: Vista) => void
   alternar: (c: keyof Camadas) => void
   setExagero: (v: number) => void
   setIntervalo: (v: number) => void
   setFerramenta: (f: Ferramenta) => void
+  setMaterialPiso: (m: MaterialPiso) => void
+  setRascunho: (r: Vec2[]) => void
+  setCaminhando: (c: boolean) => void
+  setRealista: (r: boolean) => void
   setCursor: (c: Estado['cursor']) => void
 }
 
@@ -40,26 +55,37 @@ export const useEstado = create<Estado>()(
   persist(
     (set) => ({
       vista: '3d',
-      camadas: { foto: true, divisas: true, recuo: true, mata: true, relevo: false },
+      camadas: { foto: true, divisas: true, recuo: true, mata: true, relevo: false, fluxos: true },
       exagero: 1,
       intervaloCurvas: 0.5,
       ferramenta: 'selecionar',
+      materialPiso: 'asfalto',
+      rascunho: [],
+      caminhando: false,
+      realista: true,
       cursor: null,
       setVista: (vista) => set({ vista }),
       alternar: (c) => set((s) => ({ camadas: { ...s.camadas, [c]: !s.camadas[c] } })),
       setExagero: (exagero) => set({ exagero }),
       setIntervalo: (intervaloCurvas) => set({ intervaloCurvas }),
-      setFerramenta: (ferramenta) => set({ ferramenta }),
+      setFerramenta: (ferramenta) => set({ ferramenta, rascunho: [] }),
+      setMaterialPiso: (materialPiso) => set({ materialPiso }),
+      setRascunho: (rascunho) => set({ rascunho }),
+      setCaminhando: (caminhando) => set({ caminhando }),
+      setRealista: (realista) => set({ realista }),
       setCursor: (cursor) => set({ cursor }),
     }),
     {
       name: 'planta-keuva:preferencias',
-      version: 2,
-      partialize: ({ vista, camadas, exagero, intervaloCurvas }) => ({ vista, camadas, exagero, intervaloCurvas }),
+      version: 3,
+      // `realista` entrou depois sem mudar a versão: quem não tem ganha o padrão (ligado) na mescla.
+      partialize: ({ vista, camadas, exagero, intervaloCurvas, realista }) => ({ vista, camadas, exagero, intervaloCurvas, realista }),
       // A versão 0.1.0 tinha vista dividida e camadas diferentes: volta ao padrão novo.
+      // A v3 ganhou a camada do fluxo das carretas (ligada).
       migrate: (salvo, versao) => {
         const s = (salvo ?? {}) as Record<string, unknown>
         if (versao < 2) return { exagero: s.exagero ?? 1, intervaloCurvas: s.intervaloCurvas ?? 0.5 }
+        if (versao < 3 && s.camadas) return { ...s, camadas: { ...(s.camadas as object), fluxos: true } }
         return s
       },
     },

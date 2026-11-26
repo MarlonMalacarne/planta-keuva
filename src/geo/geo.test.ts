@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { area, contains, dist, length, scatter, type Vec2 } from './polygon'
+import { area, contains, dist, length, scatter, sobrepoe, type Vec2 } from './polygon'
 import { ElevationModel, contours } from './elevation'
-import { terreno, calcularResumo, elevacaoDaFoto as elevacao } from '../data/terreno'
+import { terreno, areasProtegidas, calcularResumo, elevacaoDaFoto as elevacao } from '../data/terreno'
+
+function distSegmento(p: Vec2, a: Vec2, b: Vec2) {
+  const dx = b[0] - a[0], dy = b[1] - a[1]
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)))
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy)
+}
 
 const resumo = calcularResumo(elevacao)
 
@@ -38,6 +44,33 @@ describe('terreno real', () => {
   it('recuo e mata ficam dentro do lote', () => {
     expect(resumo.areaRecuo).toBeGreaterThan(900)
     expect(resumo.areaLivre).toBeGreaterThan(0)
+  })
+  it('reserva legal e compensação têm as áreas do laudo e ficam dentro do lote', () => {
+    expect(Math.abs(area(terreno.reservaLegal.poligono) - 4000)).toBeLessThan(2)
+    expect(Math.abs(area(terreno.compensacao.poligono) - 600)).toBeLessThan(2)
+    for (const a of areasProtegidas) {
+      // vértices dentro do lote ou em cima da divisa
+      for (const p of a.poligono) {
+        const naDivisa = terreno.perimetro.some((q, i) => distSegmento(p, q, terreno.perimetro[(i + 1) % terreno.perimetro.length]) < 0.05)
+        expect(contains(terreno.perimetro, p) || naDivisa).toBe(true)
+      }
+    }
+    // Nenhum ponto fica em duas áreas ao mesmo tempo (a área livre não desconta nada duas vezes).
+    const listas = [terreno.recuo.poligono, ...areasProtegidas.map((a) => a.poligono)]
+    for (let x = -50.25; x < 120; x += 0.5)
+      for (let y = 0.25; y < 195; y += 0.5) expect(listas.filter((l) => contains(l, [x, y])).length).toBeLessThan(2)
+    // Mata fora do pedido de corte: o triângulo entre a supressão e a linha B–C (~4.100 m²).
+    expect(resumo.areaMataMantida).toBeGreaterThan(3800)
+    expect(resumo.areaMataMantida).toBeLessThan(4500)
+    expect(resumo.areaLivre).toBeCloseTo(area(terreno.perimetro) - resumo.areaRecuo - 4000 - 600 - resumo.areaMataMantida, -1)
+  })
+  it('sobreposição de polígonos', () => {
+    const q = (x: number, y: number, l: number): Vec2[] => [[x, y], [x + l, y], [x + l, y + l], [x, y + l]]
+    expect(sobrepoe(q(0, 0, 10), q(5, 5, 10))).toBe(true)
+    expect(sobrepoe(q(0, 0, 10), q(2, 2, 2))).toBe(true)
+    expect(sobrepoe(q(0, 0, 10), q(11, 0, 10))).toBe(false)
+    // cruz: nenhum vértice dentro do outro, mas as bordas se cortam
+    expect(sobrepoe([[-10, -1], [10, -1], [10, 1], [-10, 1]], [[-1, -10], [1, -10], [1, 10], [-1, 10]])).toBe(true)
   })
 })
 
