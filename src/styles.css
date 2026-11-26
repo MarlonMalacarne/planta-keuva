@@ -275,3 +275,15 @@ h4 { font-size: 11px; font-weight: 600; color: var(--texto-3); margin: 18px 0 8p
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation: none !important; transition: none !important; }
 }
+
+/* Fluxo das carretas e propostas */
+.amostra-fluxos { background: linear-gradient(90deg, transparent 0 20%, #f59f0a 20% 80%, transparent 80%) center / 100% 3px no-repeat; position: relative; }
+.amostra-fluxos::after { content: ''; position: absolute; right: 1px; top: 50%; transform: translateY(-50%); border: 4px solid transparent; border-left: 6px solid #f59f0a; border-right: 0; }
+.rotulo-fluxo { fill: #fff; font-weight: 650; text-anchor: middle; paint-order: stroke; stroke: rgba(10, 14, 22, 0.75); stroke-width: 0.25em; pointer-events: none; }
+.fluxo { cursor: pointer; }
+.item.recuado2 { padding-left: 42px; font-size: 12.5px; }
+.proposta { display: flex; gap: 10px; align-items: center; padding: 4px 4px 10px; }
+.proposta b { display: block; font-size: 13px; }
+.proposta small { display: block; color: var(--texto-3); font-size: 11.5px; line-height: 1.35; }
+.proposta .icone-menu { width: 32px; height: 32px; background: linear-gradient(180deg, rgba(168, 85, 247, 0.55), rgba(120, 60, 200, 0.35)); }
+.botao-secundario.largo { width: 100%; justify-content: center; }

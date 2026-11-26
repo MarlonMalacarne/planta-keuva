@@ -1,4 +1,4 @@
-import { area, bbox, centroid, type Vec2 } from '../geo/polygon'
+import { area, bbox, centroid, contains, type Vec2 } from '../geo/polygon'
 import { fmt } from '../data/terreno'
 import { materiais, type MaterialPiso, type Piso } from '../model/pisos'
 
@@ -46,25 +46,32 @@ export function PadroesPiso() {
   )
 }
 
-export function PisoNaPlanta({ p, px, fonte, selecionado }: { p: Piso; px: number; fonte: number; selecionado: boolean }) {
-  const b = bbox(p.pontos)
-  const [cx, cy] = centroid(p.pontos)
-  const cabe = Math.min(b.width, b.height) / px > 46
+export function PisoNaPlanta({ p, px, selecionado }: { p: Piso; px: number; selecionado: boolean }) {
   return (
     <g data-piso={p.id} className="alvo-arrastavel">
       <path d={caminho(p.pontos, true)} fill={`url(#piso-${p.material})`} fillOpacity={0.94} stroke={selecionado ? COR_SELECAO : 'rgba(255,255,255,0.6)'} strokeWidth={(selecionado ? 2.5 : 1) * px} strokeLinejoin="round" />
-      {cabe && (
-        <g className="rotulo-piso">
-          <text x={cx} y={-cy - fonte * 0.45} fontSize={fonte * 0.95}>
-            {p.nome}
-          </text>
-          <text x={cx} y={-cy + fonte * 0.75} fontSize={fonte * 0.8} className="medida">
-            {fmt.m2(area(p.pontos))}
-          </text>
-        </g>
-      )}
       {selecionado &&
         p.pontos.map(([x, y], i) => <circle key={i} data-vertice={i} cx={x} cy={-y} r={5 * px} className="vertice-piso" strokeWidth={1.5 * px} />)}
+    </g>
+  )
+}
+
+/**
+ * Nome e área do piso, por cima dos elementos (a base dos tanques mostra o nome por cima deles).
+ * Só quando cabe na tela e o centro cai dentro do piso (num "L" o centro fica fora).
+ */
+export function RotuloPiso({ p, px, fonte }: { p: Piso; px: number; fonte: number }) {
+  const b = bbox(p.pontos)
+  const c = centroid(p.pontos)
+  if (Math.min(b.width, b.height) / px <= 46 || !contains(p.pontos, c)) return null
+  return (
+    <g className="rotulo-piso">
+      <text x={c[0]} y={-c[1] - fonte * 0.45} fontSize={fonte * 0.95}>
+        {p.nome}
+      </text>
+      <text x={c[0]} y={-c[1] + fonte * 0.75} fontSize={fonte * 0.8} className="medida">
+        {fmt.m2(area(p.pontos))}
+      </text>
     </g>
   )
 }

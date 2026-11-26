@@ -12,6 +12,7 @@ export interface Camadas {
   recuo: boolean
   mata: boolean
   relevo: boolean
+  fluxos: boolean
 }
 
 export const nomesCamadas: Record<keyof Camadas, string> = {
@@ -20,6 +21,7 @@ export const nomesCamadas: Record<keyof Camadas, string> = {
   recuo: 'Recuo de 5 m',
   mata: 'Reserva e árvores',
   relevo: 'Relevo e cotas',
+  fluxos: 'Fluxo das carretas',
 }
 
 interface Estado {
@@ -50,7 +52,7 @@ export const useEstado = create<Estado>()(
   persist(
     (set) => ({
       vista: '3d',
-      camadas: { foto: true, divisas: true, recuo: true, mata: true, relevo: false },
+      camadas: { foto: true, divisas: true, recuo: true, mata: true, relevo: false, fluxos: true },
       exagero: 1,
       intervaloCurvas: 0.5,
       ferramenta: 'selecionar',
@@ -70,12 +72,14 @@ export const useEstado = create<Estado>()(
     }),
     {
       name: 'planta-keuva:preferencias',
-      version: 2,
+      version: 3,
       partialize: ({ vista, camadas, exagero, intervaloCurvas }) => ({ vista, camadas, exagero, intervaloCurvas }),
       // A versão 0.1.0 tinha vista dividida e camadas diferentes: volta ao padrão novo.
+      // A v3 ganhou a camada do fluxo das carretas (ligada).
       migrate: (salvo, versao) => {
         const s = (salvo ?? {}) as Record<string, unknown>
         if (versao < 2) return { exagero: s.exagero ?? 1, intervaloCurvas: s.intervaloCurvas ?? 0.5 }
+        if (versao < 3 && s.camadas) return { ...s, camadas: { ...(s.camadas as object), fluxos: true } }
         return s
       },
     },

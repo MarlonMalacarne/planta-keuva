@@ -29,6 +29,14 @@ e (nos próximos passos) terraplanagem, modelagem, importação de modelos e ges
 - **Pintar o chão**: ferramenta do rolinho (tecla `P`) ou Adicionar > Piso. Escolha asfalto,
   cascalho, concreto, bloquete, grama ou terra e clique nos cantos (clique duplo ou `Enter`
   conclui; Shift + arraste faz um retângulo). O painel mostra área e perímetro.
+- **Portão e caminhos**: em Adicionar há o portão de correr. Os caminhos das carretas aparecem
+  como linhas com setas no sentido em que se anda (camada "Fluxo das carretas"). Clique num
+  caminho para selecionar e arraste os pontos para mudar o trajeto; Option + clique tira um ponto.
+- **Proposta da vinícola**: em Propostas, no painel da esquerda, "Carregar proposta" monta um
+  layout completo: pavilhão de 1.800 m², 50 tanques de 4,5 m e 100 de 2,5 m, portão com guarita
+  e duas balanças, pátio e vias de asfalto, rotatória e retorno para carretas, e o fluxo das
+  carretas de uva e das carretas-tanque. Tudo fora do recuo, da reserva, da compensação e da mata
+  que fica. Depois de carregar, cada peça é editável; `Cmd+Z` volta ao que havia antes.
 - **Caminhar**: no 3D, o botão "Caminhar" coloca você no terreno em primeira pessoa. `W A S D`
   ou setas andam, arrastar olha em volta, Shift corre, `Esc` sai.
 - **Atualização automática**: ao abrir, o app procura versão nova e se instala com um clique.

@@ -1,10 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Edges, Line } from '@react-three/drei'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useEstado } from '../state/store'
 import { useProjeto } from '../state/projeto'
-import { anguloEm, contorno, difAngulo, direcaoLado, esticar, esticarAltura, girar, type Elemento, type Lado } from '../model/elementos'
+import { anguloEm, contorno, difAngulo, direcaoLado, esticar, finoComoMuro, esticarAltura, girar, type Elemento, type Lado } from '../model/elementos'
 import { emPlanta, noPlanoHorizontal, noPlanoVertical, passoDe, useArrasto } from './arrasto3d'
 import Etiqueta3D from './Etiqueta3D'
 
@@ -47,12 +47,12 @@ function Forma({ e, selecionado }: { e: Elemento; selecionado: boolean }) {
         <group>
           <mesh position={[0, e.altura / 2, 0]} castShadow receiveShadow>
             <cylinderGeometry args={[e.largura / 2, e.largura / 2, e.altura, 40]} />
-            <meshStandardMaterial color={e.cor} roughness={0.35} metalness={0.55} emissive={selecionado ? COR_SELECAO : '#000'} emissiveIntensity={selecionado ? 0.12 : 0} />
+            <meshStandardMaterial color={e.cor} roughness={0.4} metalness={0.2} emissive={selecionado ? COR_SELECAO : '#000'} emissiveIntensity={selecionado ? 0.12 : 0} />
             {contornoSel}
           </mesh>
           <mesh position={[0, e.altura + e.largura * 0.08, 0]} castShadow>
             <coneGeometry args={[e.largura / 2, e.largura * 0.16, 40]} />
-            <meshStandardMaterial color={e.cor} roughness={0.35} metalness={0.55} />
+            <meshStandardMaterial color={e.cor} roughness={0.4} metalness={0.2} />
           </mesh>
         </group>
       )
@@ -73,6 +73,8 @@ function Forma({ e, selecionado }: { e: Elemento; selecionado: boolean }) {
           ))}
         </group>
       )
+    case 'portao':
+      return <Portao e={e} selecionado={selecionado} />
     default:
       return (
         <mesh position={[0, e.altura / 2, 0]} castShadow receiveShadow>
@@ -82,6 +84,51 @@ function Forma({ e, selecionado }: { e: Elemento; selecionado: boolean }) {
         </mesh>
       )
   }
+}
+
+/** Portão de grade: dois pilares, travessas em cima e embaixo e barras a cada 25 cm. */
+function Portao({ e, selecionado }: { e: Elemento; selecionado: boolean }) {
+  const barras = useRef<THREE.InstancedMesh>(null)
+  const n = Math.max(2, Math.floor(e.comprimento / 0.25))
+  const alturaBarra = Math.max(0.2, e.altura - 0.2)
+  useLayoutEffect(() => {
+    const m = barras.current
+    if (!m) return
+    const t = new THREE.Matrix4()
+    for (let i = 0; i < n; i++) {
+      t.makeTranslation(0, 0.1 + alturaBarra / 2, -e.comprimento / 2 + ((i + 0.5) * e.comprimento) / n)
+      m.setMatrixAt(i, t)
+    }
+    m.instanceMatrix.needsUpdate = true
+  }, [n, alturaBarra, e.comprimento])
+  const pilar = Math.min(0.35, e.comprimento / 6)
+  return (
+    <group>
+      {[-1, 1].map((lado) => (
+        <mesh key={lado} position={[0, (e.altura + 0.3) / 2, lado * (e.comprimento / 2 + pilar / 2)]} castShadow>
+          <boxGeometry args={[Math.max(e.largura, 0.3) + 0.1, e.altura + 0.3, pilar]} />
+          <Material cor="#9aa0a8" selecionado={selecionado} />
+        </mesh>
+      ))}
+      {[0.12, e.altura - 0.06].map((y) => (
+        <mesh key={y} position={[0, y, 0]} castShadow>
+          <boxGeometry args={[Math.min(e.largura, 0.12), 0.1, e.comprimento]} />
+          <Material cor={e.cor} selecionado={selecionado} />
+        </mesh>
+      ))}
+      <instancedMesh ref={barras} args={[undefined, undefined, n]} castShadow>
+        <boxGeometry args={[0.04, alturaBarra, 0.04]} />
+        <Material cor={e.cor} selecionado={selecionado} />
+      </instancedMesh>
+      {selecionado && (
+        <mesh position={[0, e.altura / 2, 0]}>
+          <boxGeometry args={[e.largura, e.altura, e.comprimento]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          <Edges color={COR_SELECAO} lineWidth={2} threshold={15} />
+        </mesh>
+      )}
+    </group>
+  )
 }
 
 function Telhado({ largura, comprimento, altura, base, selecionado }: { largura: number; comprimento: number; altura: number; base: number; selecionado: boolean }) {
@@ -360,7 +407,7 @@ function ElementoNoTerreno({ e, h, selecionado }: { e: Elemento; h: (x: number, 
       <group onPointerDown={aoApertarCorpo}>
         <Forma e={e} selecionado={selecionado} />
         {/* Fundação: esconde a folga entre o piso e o terreno em declive */}
-        {e.tipo !== 'tanque' && (
+        {e.tipo !== 'tanque' && e.tipo !== 'portao' && (
           <mesh position={[0, -1.5 + 0.01, 0]} receiveShadow>
             <boxGeometry args={[e.largura + 0.3, 3, e.comprimento + 0.3]} />
             <meshStandardMaterial color="#9a958c" roughness={1} />
@@ -400,7 +447,7 @@ function posicaoLado(e: Elemento, lado: Lado, folga: number): [number, number, n
 
 function rotuloLado(e: Elemento, lado: Lado) {
   if (e.tipo === 'tanque') return `Diâmetro ${metros(e.largura)}`
-  if (lado[0] === 'x') return `${e.tipo === 'muro' ? 'Espessura' : 'Largura'} ${metros(e.largura)}`
+  if (lado[0] === 'x') return `${finoComoMuro(e) ? 'Espessura' : 'Largura'} ${metros(e.largura)}`
   return `Comprimento ${metros(e.comprimento)}`
 }
 

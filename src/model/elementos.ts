@@ -1,7 +1,7 @@
 import { contains as dentro, sobrepoe } from '../geo/polygon'
 
 /** Elementos que o usuário coloca no terreno. Medidas em metros, rotação em graus. */
-export type TipoElemento = 'galpao' | 'predio' | 'tanque' | 'muro' | 'caixa'
+export type TipoElemento = 'galpao' | 'predio' | 'tanque' | 'muro' | 'portao' | 'caixa'
 
 export interface Elemento {
   id: string
@@ -12,7 +12,7 @@ export interface Elemento {
   y: number
   /** Rotação em graus, sentido anti-horário visto de cima (0 = largura no eixo leste-oeste). */
   rot: number
-  /** Dimensão no eixo X local. No tanque é o diâmetro; no muro é a espessura. */
+  /** Dimensão no eixo X local. No tanque é o diâmetro; no muro e no portão é a espessura. */
   largura: number
   /** Dimensão no eixo Y local. */
   comprimento: number
@@ -34,10 +34,14 @@ export const catalogo: Record<TipoElemento, Modelo> = {
   predio: { nome: 'Prédio', descricao: 'Escritório, refeitório, vestiário', largura: 15, comprimento: 25, altura: 7, cor: '#e8e2d6' },
   tanque: { nome: 'Tanque / silo', descricao: 'Reservatório cilíndrico', largura: 8, comprimento: 8, altura: 12, cor: '#9fb3c8' },
   muro: { nome: 'Muro', descricao: 'Muro ou cerca de divisa', largura: 0.25, comprimento: 40, altura: 2.5, cor: '#b8a99a' },
+  portao: { nome: 'Portão', descricao: 'Portão de correr na divisa', largura: 0.3, comprimento: 12, altura: 2.2, cor: '#5c6b7a' },
   caixa: { nome: 'Bloco', descricao: 'Volume genérico (equipamento, área)', largura: 6, comprimento: 6, altura: 3, cor: '#7aa2d6' },
 }
 
 export const coresSugeridas = ['#c9ced6', '#e8e2d6', '#9fb3c8', '#b8a99a', '#7aa2d6', '#5c6b7a', '#d97757', '#4f9d69']
+
+/** Muro e portão: a largura é a espessura. */
+export const finoComoMuro = (e: Pick<Elemento, 'tipo'>) => e.tipo === 'muro' || e.tipo === 'portao'
 
 export function areaProjecao(e: Elemento) {
   return e.tipo === 'tanque' ? Math.PI * (e.largura / 2) ** 2 : e.largura * e.comprimento
@@ -73,7 +77,7 @@ export function direcaoLado(e: Pick<Elemento, 'rot'>, lado: Lado): P {
 
 export function medidaMinima(e: Elemento, eixo: 'largura' | 'comprimento' | 'altura') {
   if (eixo === 'altura') return 0.3
-  return e.tipo === 'muro' && eixo === 'largura' ? 0.05 : 0.5
+  return finoComoMuro(e) && eixo === 'largura' ? 0.05 : 0.5
 }
 
 /**

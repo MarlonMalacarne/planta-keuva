@@ -10,6 +10,7 @@ import Elementos3D from './Elementos3D'
 import Arvores3D from './Arvores3D'
 import Etiqueta3D from './Etiqueta3D'
 import Pisos3D from './Pisos3D'
+import Fluxos3D from './Fluxos3D'
 import Caminhada from './Caminhada'
 import { Footprints, LogOut } from 'lucide-react'
 import { geometriaNoChao } from './chao3d'
@@ -252,6 +253,10 @@ function PisosNoTerreno() {
   return <Pisos3D h={useAltura()} />
 }
 
+function FluxosNoTerreno() {
+  return <Fluxos3D h={useAltura()} />
+}
+
 function CaminhadaNoTerreno({ aoSair }: { aoSair: (alvo: [number, number, number]) => void }) {
   return <Caminhada h={useAltura()} aoSair={aoSair} />
 }
@@ -330,6 +335,7 @@ export default function Scene3D() {
         {camadas.mata && <ArvoresNoTerreno />}
         <Invasoes />
         <PisosNoTerreno />
+        {camadas.fluxos && <FluxosNoTerreno />}
         {(camadas.relevo || ferramenta === 'cota') && <Cotas />}
         <ElementosNoTerreno />
         {caminhando ? (

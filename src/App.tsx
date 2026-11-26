@@ -10,6 +10,7 @@ import PaletaPiso from './ui/PaletaPiso'
 import { concluirPiso, desfazerCanto } from './state/desenho'
 import { useEstado, type Vista } from './state/store'
 import { useProjeto } from './state/projeto'
+import { propostaVinicola } from './model/propostaVinicola'
 
 const Scene3D = lazy(() => import('./views/Scene3D'))
 
@@ -46,6 +47,7 @@ function useAtalhos() {
       else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (p.selecao?.tipo === 'elemento') p.removerElemento(p.selecao.id)
         else if (p.selecao?.tipo === 'piso') p.removerPiso(p.selecao.id)
+        else if (p.selecao?.tipo === 'fluxo') p.removerFluxo(p.selecao.id)
         else if (p.selecao?.tipo === 'cota') p.removerCota(p.selecao.id)
         else if (p.selecao?.tipo === 'arvores') p.removerArvores(p.selecao.ids)
       } else if (e.key === 'Escape') {
@@ -62,9 +64,28 @@ function useAtalhos() {
   }, [])
 }
 
+/**
+ * Na primeira vez que o app abre com o projeto vazio, já mostra a proposta da vinícola.
+ * Só uma vez: se depois o projeto ficar vazio de novo, continua vazio.
+ */
+function usePropostaInicial() {
+  useEffect(() => {
+    const chave = 'planta-keuva:proposta-inicial'
+    try {
+      if (localStorage.getItem(chave)) return
+      localStorage.setItem(chave, '1')
+    } catch {
+      return
+    }
+    const p = useProjeto.getState()
+    if (!p.elementos.length && !p.pisos.length && !p.fluxos.length) p.carregarProposta(propostaVinicola(), false)
+  }, [])
+}
+
 export default function App() {
   const { vista, setVista, ferramenta, caminhando } = useEstado()
   useAtalhos()
+  usePropostaInicial()
   return (
     <div className="app">
       <div className="palco">

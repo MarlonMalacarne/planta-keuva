@@ -4,12 +4,13 @@ import { bbox, centroid, dist, type Vec2 } from '../geo/polygon'
 import { contours } from '../geo/elevation'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
-import { anguloEm, contorno, difAngulo, direcaoLado, esticar, girar, type Elemento, type Lado } from '../model/elementos'
+import { anguloEm, contorno, difAngulo, direcaoLado, esticar, finoComoMuro, girar, type Elemento, type Lado } from '../model/elementos'
 import type { Arvore } from '../model/arvores'
 import { areaInvadida } from '../model/protecao'
 import { retangulo } from '../model/pisos'
 import { concluirPiso, encaixar, marcarCanto } from '../state/desenho'
-import { PadroesPiso, PisoNaPlanta, RascunhoPiso } from './Pisos2D'
+import { PadroesPiso, PisoNaPlanta, RascunhoPiso, RotuloPiso } from './Pisos2D'
+import { FluxoNaPlanta } from './Fluxos2D'
 
 interface Vista { cx: number; cy: number; esc: number } // esc = pixels por metro
 
@@ -31,6 +32,8 @@ type Alvo =
   | { tipo: 'caixa'; x0: number; y0: number; somar: string[] }
   | { tipo: 'piso'; id: string; originais: Vec2[]; x0: number; y0: number }
   | { tipo: 'vertice'; id: string; i: number }
+  | { tipo: 'fluxo'; id: string; originais: Vec2[]; x0: number; y0: number }
+  | { tipo: 'verticeFluxo'; id: string; i: number }
   | { tipo: 'retangulo'; x0: number; y0: number }
   | { tipo: 'nada' }
 type Arrasto = { x: number; y: number; cx: number; cy: number; moveu: boolean; marcado: boolean; alvo?: Alvo }
@@ -47,7 +50,7 @@ export default function Plan2D() {
   const setCursor = useEstado((e) => e.setCursor)
   const ferramenta = useEstado((e) => e.ferramenta)
   const elevacao = useElevacao()
-  const { cotas, elementos, arvores, pisos, selecao, selecionar, adicionarCota, editarCota, editarElemento, editarArvores, editarPiso, marcar } = useProjeto()
+  const { cotas, elementos, arvores, pisos, fluxos, selecao, selecionar, adicionarCota, editarCota, editarElemento, editarArvores, editarPiso, editarFluxo, marcar } = useProjeto()
   const rascunho = useEstado((e) => e.rascunho)
   const materialPiso = useEstado((e) => e.materialPiso)
   const [mouse, setMouse] = useState<Vec2 | null>(null)
@@ -142,6 +145,7 @@ export default function Plan2D() {
   const elemSel = selElem ? elementos.find((e) => e.id === selElem) : undefined
   const arvSel = useMemo(() => new Set(selecao?.tipo === 'arvores' ? selecao.ids : []), [selecao])
   const selPiso = selecao?.tipo === 'piso' ? selecao.id : null
+  const selFluxo = selecao?.tipo === 'fluxo' ? selecao.id : null
 
   return (
     <div className="plan2d">
@@ -159,6 +163,8 @@ export default function Plan2D() {
           const elem = t.closest?.('[data-elemento]')?.getAttribute('data-elemento')
           const piso = t.closest?.('[data-piso]')?.getAttribute('data-piso')
           const vertice = t.getAttribute?.('data-vertice')
+          const fluxo = t.closest?.('[data-fluxo]')?.getAttribute('data-fluxo')
+          const verticeFluxo = t.getAttribute?.('data-vertice-fluxo')
           let alvo: Alvo | undefined
           const [mx, my] = paraMundo(e.clientX, e.clientY)
           if (ferramenta === 'piso') {
@@ -171,6 +177,17 @@ export default function Plan2D() {
               const c = cotas.find((c) => c.id === cota)!
               alvo = { tipo: 'cota', id: cota, dx: c.x - mx, dy: c.y - my }
               selecionar({ tipo: 'cota', id: cota })
+            } else if (fluxo && verticeFluxo !== null && verticeFluxo !== undefined) {
+              const ff = fluxos.find((x) => x.id === fluxo)!
+              if (e.altKey && ff.pontos.length > 2) {
+                // Option + clique tira o ponto do caminho.
+                editarFluxo(fluxo, { pontos: ff.pontos.filter((_, i) => i !== Number(verticeFluxo)) })
+                alvo = { tipo: 'nada' }
+              } else alvo = { tipo: 'verticeFluxo', id: fluxo, i: Number(verticeFluxo) }
+            } else if (fluxo && !e.shiftKey) {
+              const ff = fluxos.find((x) => x.id === fluxo)!
+              selecionar({ tipo: 'fluxo', id: fluxo })
+              alvo = { tipo: 'fluxo', id: fluxo, originais: ff.pontos, x0: mx, y0: my }
             } else if (elem) {
               const el = elementos.find((x) => x.id === elem)!
               alvo = { tipo: 'elemento', id: elem, dx: el.x - mx, dy: el.y - my }
@@ -252,6 +269,16 @@ export default function Plan2D() {
             if (!pp) return
             const q = fino ? ([arred(x), arred(y)] as Vec2) : encaixarSem(pp.pontos, [x, y], 10 * px)
             editarPiso(alvo.id, { pontos: pp.pontos.map((p, i) => (i === alvo.i ? q : p)) }, false)
+          } else if (alvo.tipo === 'fluxo') {
+            const passo = fino ? 0.05 : 0.5
+            const dx = noPasso(x - alvo.x0, passo), dy = noPasso(y - alvo.y0, passo)
+            editarFluxo(alvo.id, { pontos: alvo.originais.map(([px0, py0]) => [arred(px0 + dx), arred(py0 + dy)] as Vec2) }, false)
+          } else if (alvo.tipo === 'verticeFluxo') {
+            const ff = fluxos.find((f) => f.id === alvo.id)
+            if (!ff) return
+            const passo = fino ? 0.05 : 0.5
+            const q: Vec2 = [arred(noPasso(x, passo)), arred(noPasso(y, passo))]
+            editarFluxo(alvo.id, { pontos: ff.pontos.map((p, i) => (i === alvo.i ? q : p)) }, false)
           } else if (alvo.tipo === 'caixa' || alvo.tipo === 'retangulo') setCaixaSel({ x0: alvo.x0, y0: alvo.y0, x1: x, y1: y })
         }}
         onPointerUp={(e) => {
@@ -326,7 +353,7 @@ export default function Plan2D() {
         )}
 
         {pisos.map((p) => (
-          <PisoNaPlanta key={p.id} p={p} px={px} fonte={fonte} selecionado={p.id === selPiso && ferramenta === 'selecionar'} />
+          <PisoNaPlanta key={p.id} p={p} px={px} selecionado={p.id === selPiso && ferramenta === 'selecionar'} />
         ))}
 
         {mostrarRelevo && (
@@ -386,6 +413,13 @@ export default function Plan2D() {
         {elementos.map((e) => (
           <Pegada key={e.id} e={e} px={px} fonte={fonte} selecionado={e.id === selElem} />
         ))}
+
+        {pisos.map((p) => (
+          <RotuloPiso key={p.id} p={p} px={px} fonte={fonte} />
+        ))}
+
+        {camadas.fluxos &&
+          fluxos.map((f) => <FluxoNaPlanta key={f.id} f={f} px={px} fonte={fonte} selecionado={f.id === selFluxo && ferramenta === 'selecionar'} />)}
 
         {elemSel && ferramenta !== 'cota' && <Alcas2D e={elemSel} px={px} />}
 
@@ -486,6 +520,17 @@ function RotulosProtegidas({ fonte }: { fonte: number }) {
 function Pegada({ e, px, fonte, selecionado }: { e: Elemento; px: number; fonte: number; selecionado: boolean }) {
   const invadida = useMemo(() => !!areaInvadida(e), [e])
   const cor = invadida ? '#ff5a5f' : selecionado ? COR_SELECAO : '#ffffff'
+  // Nome e medidas só quando o texto cabe dentro do elemento na tela (150 tanques viram uma sopa de letras).
+  const cabeRotulo = useMemo(() => {
+    if (selecionado) return true
+    if (finoComoMuro(e)) return false
+    // Cordas horizontal e vertical que passam pelo centro do retângulo girado.
+    const r = (e.rot * Math.PI) / 180, c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r))
+    const corda = (a: number, b: number) => Math.min(a / Math.max(c, 1e-6), b / Math.max(s, 1e-6))
+    const larg = e.tipo === 'tanque' ? e.largura : corda(e.largura, e.comprimento)
+    const alt = e.tipo === 'tanque' ? e.largura : corda(e.comprimento, e.largura)
+    return e.nome.length * 0.56 * fonte < larg && fonte * 2.4 < alt
+  }, [e, fonte, selecionado])
   const forma =
     e.tipo === 'tanque' ? (
       <circle cx={e.x} cy={-e.y} r={e.largura / 2} />
@@ -497,12 +542,16 @@ function Pegada({ e, px, fonte, selecionado }: { e: Elemento; px: number; fonte:
       <g fill={e.cor} fillOpacity={0.85} stroke={cor} strokeWidth={(selecionado || invadida ? 2.5 : 1.2) * px} strokeDasharray={invadida ? `${5 * px} ${3 * px}` : undefined}>
         {forma}
       </g>
-      <text x={e.x} y={-e.y - fonte * 0.4} fontSize={fonte} className="rotulo-elemento">
-        {e.nome}
-      </text>
-      <text x={e.x} y={-e.y + fonte * 0.9} fontSize={fonte * 0.85} className="rotulo-elemento-medida">
-        {e.tipo === 'tanque' ? `Ø ${fmt.m(e.largura, 1)}` : `${fmt.m(e.largura, 1)} × ${fmt.m(e.comprimento, 1)}`}
-      </text>
+      {cabeRotulo && (
+        <>
+          <text x={e.x} y={-e.y - fonte * 0.4} fontSize={fonte} className="rotulo-elemento">
+            {e.nome}
+          </text>
+          <text x={e.x} y={-e.y + fonte * 0.9} fontSize={fonte * 0.85} className="rotulo-elemento-medida">
+            {e.tipo === 'tanque' ? `Ø ${fmt.m(e.largura, 1)}` : `${fmt.m(e.largura, 1)} × ${fmt.m(e.comprimento, 1)}`}
+          </text>
+        </>
+      )}
     </g>
   )
 }
@@ -522,7 +571,7 @@ function pontoLado(e: Elemento, lado: Lado, folga = 0): Vec2 {
 
 function rotuloLado(e: Elemento, lado: Lado) {
   if (e.tipo === 'tanque') return `Ø ${metros(e.largura)}`
-  if (lado[0] === 'x') return `${e.tipo === 'muro' ? 'Espessura' : 'Largura'} ${metros(e.largura)}`
+  if (lado[0] === 'x') return `${finoComoMuro(e) ? 'Espessura' : 'Largura'} ${metros(e.largura)}`
   return `Comprimento ${metros(e.comprimento)}`
 }
 

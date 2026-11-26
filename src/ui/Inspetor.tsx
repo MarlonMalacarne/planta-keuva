@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Copy, Crosshair, PaintRoller, ShieldAlert, Trash2, TreeDeciduous } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Crosshair, PaintRoller, Route, ShieldAlert, Trash2, TreeDeciduous } from 'lucide-react'
 import { calcularResumo, terreno, fmt } from '../data/terreno'
-import { useElevacao, useProjeto, type Arvore, type Cota, type Elemento, type Piso } from '../state/projeto'
-import { areaProjecao, catalogo, coresSugeridas, volume } from '../model/elementos'
+import { useElevacao, useProjeto, type Arvore, type Cota, type Elemento, type Fluxo, type Piso } from '../state/projeto'
+import { areaProjecao, catalogo, coresSugeridas, finoComoMuro, volume } from '../model/elementos'
 import { areaInvadida } from '../model/protecao'
 import { situacaoArvore } from '../model/arvores'
 import { areaPiso, materiais, nomeAutomatico, ordemMateriais, perimetroPiso, type MaterialPiso } from '../model/pisos'
+import { comprimentoFluxo, coresFluxo } from '../model/fluxos'
 import { CampoNumero } from './Campos'
 import { iconeElemento } from './icones'
 
 export default function Inspetor() {
-  const { selecao, elementos, cotas, arvores, pisos } = useProjeto()
+  const { selecao, elementos, cotas, arvores, pisos, fluxos } = useProjeto()
+  const fluxo = selecao?.tipo === 'fluxo' ? fluxos.find((f) => f.id === selecao.id) : undefined
   const piso = selecao?.tipo === 'piso' ? pisos.find((p) => p.id === selecao.id) : undefined
   const el = selecao?.tipo === 'elemento' ? elementos.find((e) => e.id === selecao.id) : undefined
   const cota = selecao?.tipo === 'cota' ? cotas.find((c) => c.id === selecao.id) : undefined
@@ -18,7 +20,7 @@ export default function Inspetor() {
   const arvs = ids ? arvores.filter((a) => ids.has(a.id)) : []
   return (
     <aside className="painel painel-dir vidro">
-      {el ? <InspetorElemento key={el.id} e={el} /> : piso ? <InspetorPiso key={piso.id} p={piso} /> : cota ? <InspetorCota key={cota.id} c={cota} /> : arvs.length ? <InspetorArvores key={arvs.length === 1 ? arvs[0].id : 'varias'} lista={arvs} /> : <ResumoTerreno />}
+      {el ? <InspetorElemento key={el.id} e={el} /> : piso ? <InspetorPiso key={piso.id} p={piso} /> : fluxo ? <InspetorFluxo key={fluxo.id} f={fluxo} /> : cota ? <InspetorCota key={cota.id} c={cota} /> : arvs.length ? <InspetorArvores key={arvs.length === 1 ? arvs[0].id : 'varias'} lista={arvs} /> : <ResumoTerreno />}
     </aside>
   )
 }
@@ -56,8 +58,8 @@ function InspetorElemento({ e }: { e: Elemento }) {
           <CampoNumero rotulo="Diâmetro" valor={e.largura} min={0.1} onSalvar={(largura) => ed({ largura })} />
         ) : (
           <>
-            <CampoNumero rotulo={e.tipo === 'muro' ? 'Espessura' : 'Largura'} valor={e.largura} min={0.05} onSalvar={(largura) => ed({ largura })} />
-            <CampoNumero rotulo="Comprimento" valor={e.comprimento} min={0.1} onSalvar={(comprimento) => ed({ comprimento })} />
+            <CampoNumero rotulo={finoComoMuro(e) ? 'Espessura' : 'Largura'} valor={e.largura} min={0.05} onSalvar={(largura) => ed({ largura })} />
+            <CampoNumero rotulo={e.tipo === 'portao' ? 'Abertura' : 'Comprimento'} valor={e.comprimento} min={0.1} onSalvar={(comprimento) => ed({ comprimento })} />
           </>
         )}
         <CampoNumero rotulo="Altura" valor={e.altura} min={0.1} onSalvar={(altura) => ed({ altura })} />
@@ -146,6 +148,46 @@ function InspetorPiso({ p }: { p: Piso }) {
         </button>
       </div>
       <p className="dica">Na planta 2D, arraste o piso para mover e puxe os pontos brancos para mudar o formato. Option + clique num ponto tira o canto.</p>
+    </div>
+  )
+}
+
+function InspetorFluxo({ f }: { f: Fluxo }) {
+  const { editarFluxo, removerFluxo } = useProjeto()
+  return (
+    <div className="inspetor">
+      <div className="titulo-inspetor">
+        <span className="icone-tipo" style={{ background: f.cor }}>
+          <Route size={16} />
+        </span>
+        <input className="nome" value={f.nome} onChange={(ev) => editarFluxo(f.id, { nome: ev.target.value }, false)} aria-label="Nome" />
+      </div>
+      <p className="tipo">Caminho com setas · fluxo de veículos</p>
+
+      <h4>Cor</h4>
+      <div className="cores">
+        {coresFluxo.map((c) => (
+          <button key={c} className={`cor ${c === f.cor ? 'ativa' : ''}`} style={{ background: c }} onClick={() => editarFluxo(f.id, { cor: c })} aria-label={`Cor ${c}`} />
+        ))}
+      </div>
+
+      <div className="metricas">
+        <div>
+          <span>Percurso</span>
+          <b>{fmt.m(comprimentoFluxo(f), 0)}</b>
+        </div>
+        <div>
+          <span>Pontos</span>
+          <b>{f.pontos.length}</b>
+        </div>
+      </div>
+
+      <div className="acoes">
+        <button className="botao-perigo" onClick={() => removerFluxo(f.id)} title="Delete">
+          <Trash2 size={15} /> Apagar caminho
+        </button>
+      </div>
+      <p className="dica">Na planta 2D, arraste o caminho para mover e puxe os pontos brancos para mudar o trajeto. Option + clique num ponto tira o ponto.</p>
     </div>
   )
 }

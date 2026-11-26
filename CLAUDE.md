@@ -32,6 +32,16 @@ da Keuva e gerir a obra. Usuário final: Marlon, não programa; textos da interf
   desenho em andamento fica em `useEstado().rascunho`; `src/state/desenho.ts` marca cantos (encaixe
   nos cantos do lote/pisos/elementos) e conclui. 2D em `Pisos2D.tsx` (padrões SVG), 3D em
   `Pisos3D.tsx` (texturas de canvas em `chao3d.ts`). Não entram na reserva/compensação.
+- Portão (`tipo: 'portao'`, fino como muro: `finoComoMuro`; largura = espessura, comprimento =
+  abertura). Caminhos das carretas: `src/model/fluxos.ts` (`Fluxo`, `setasDoFluxo`) em `projeto.ts`
+  (persist v7, `selecao` `{ tipo: 'fluxo', id }`, `editarFluxo`/`removerFluxo`); 2D `Fluxos2D.tsx`
+  (arrasto do caminho e dos pontos em `Plan2D.tsx`), 3D `Fluxos3D.tsx`. Camada `fluxos` nas
+  preferências (store v3).
+- Proposta da vinícola: `src/model/propostaVinicola.ts` gera elementos, pisos e fluxos no
+  referencial da frente (`F(u, v)`: u ao longo de F→E, v para dentro); `carregarProposta` troca o
+  projeto inteiro com ids novos (um `Cmd+Z` volta). `usePropostaInicial` (`App.tsx`) carrega uma vez
+  só, na primeira abertura com o projeto vazio. `proposta.test.ts` confere programa, áreas
+  protegidas, sobreposições e que os fluxos passam pelo portão e pelas duas balanças.
 - Caminhar em primeira pessoa (`Caminhada.tsx`, `useEstado().caminhando`): troca o OrbitControls,
   WASD/setas + arrastar para olhar, olhos a 1,7 m, não atravessa elementos; Esc sai.
 - Edição direta estilo Shapr3D: alças nas faces (`esticar`, a face oposta fica parada), topo

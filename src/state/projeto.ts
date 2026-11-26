@@ -8,18 +8,21 @@ import { catalogo, difAngulo, lugarLivre, type Elemento, type TipoElemento } fro
 import { arvoresDaMataMantida, arvoresIniciais, naAreaDeCorte, proximoIdArvore, type Arvore } from '../model/arvores'
 import { areaInvadida, areasDeObra, poligonoInvade } from '../model/protecao'
 import { materiais, type MaterialPiso, type Piso } from '../model/pisos'
+import type { Fluxo } from '../model/fluxos'
+import type { Proposta } from '../model/propostaVinicola'
 
-export type { Cota, Elemento, Arvore, Piso }
+export type { Cota, Elemento, Arvore, Piso, Fluxo }
 
 const cotasDaFoto: Cota[] = terreno.cotas.map((c) => ({ ...c, origem: 'foto' as const }))
 
-export type Selecao = { tipo: 'cota' | 'elemento' | 'piso'; id: string } | { tipo: 'arvores'; ids: string[] } | null
+export type Selecao = { tipo: 'cota' | 'elemento' | 'piso' | 'fluxo'; id: string } | { tipo: 'arvores'; ids: string[] } | null
 
 interface Foto {
   cotas: Cota[]
   elementos: Elemento[]
   arvores: Arvore[]
   pisos: Piso[]
+  fluxos: Fluxo[]
 }
 
 interface Projeto extends Foto {
@@ -54,6 +57,11 @@ interface Projeto extends Foto {
   adicionarPiso: (material: MaterialPiso, pontos: Vec2[]) => string | null
   editarPiso: (id: string, dados: Partial<Omit<Piso, 'id'>>, registrar?: boolean) => void
   removerPiso: (id: string) => void
+
+  editarFluxo: (id: string, dados: Partial<Omit<Fluxo, 'id'>>, registrar?: boolean) => void
+  removerFluxo: (id: string) => void
+  /** Troca elementos, pisos e caminhos pelos da proposta (um Cmd+Z volta ao que estava). */
+  carregarProposta: (p: Proposta, registrar?: boolean) => void
 }
 
 const LIMITE_HISTORICO = 100
@@ -76,7 +84,7 @@ function proximoNome(base: string, elementos: { nome: string }[]) {
 export const useProjeto = create<Projeto>()(
   persist(
     (set, get) => {
-      const foto = (): Foto => ({ cotas: get().cotas, elementos: get().elementos, arvores: get().arvores, pisos: get().pisos })
+      const foto = (): Foto => ({ cotas: get().cotas, elementos: get().elementos, arvores: get().arvores, pisos: get().pisos, fluxos: get().fluxos })
       const comHistorico = (mudanca: Partial<Foto>) => ({
         ...mudanca,
         historico: [...get().historico, foto()].slice(-LIMITE_HISTORICO),
@@ -86,6 +94,7 @@ export const useProjeto = create<Projeto>()(
         elementos: [],
         arvores: arvoresIniciais(),
         pisos: [],
+        fluxos: [],
         historico: [],
         selecao: null,
         aviso: null,
@@ -200,12 +209,27 @@ export const useProjeto = create<Projeto>()(
           set(registrar ? comHistorico({ pisos }) : { pisos })
         },
         removerPiso: (id) => set({ ...comHistorico({ pisos: get().pisos.filter((p) => p.id !== id) }), selecao: null }),
+
+        editarFluxo: (id, dados, registrar = true) => {
+          const fluxos = get().fluxos.map((f) => (f.id === id ? { ...f, ...dados } : f))
+          set(registrar ? comHistorico({ fluxos }) : { fluxos })
+        },
+        removerFluxo: (id) => set({ ...comHistorico({ fluxos: get().fluxos.filter((f) => f.id !== id) }), selecao: null }),
+
+        carregarProposta: (p, registrar = true) => {
+          const novo = {
+            elementos: p.elementos.map((e, i) => ({ ...e, id: `E${i + 1}` })),
+            pisos: p.pisos.map((x, i) => ({ ...x, id: `S${i + 1}` })),
+            fluxos: p.fluxos.map((f, i) => ({ ...f, id: `F${i + 1}` })),
+          }
+          set({ ...(registrar ? comHistorico(novo) : novo), selecao: null })
+        },
       }
     },
     {
       name: 'planta-keuva:projeto',
-      version: 6,
-      partialize: ({ cotas, elementos, arvores, pisos }) => ({ cotas, elementos, arvores, pisos }),
+      version: 7,
+      partialize: ({ cotas, elementos, arvores, pisos, fluxos }) => ({ cotas, elementos, arvores, pisos, fluxos }),
       migrate: migrarProjeto,
     },
   ),
@@ -214,14 +238,14 @@ export const useProjeto = create<Projeto>()(
 /**
  * v1 (0.1.0) só tinha cotas; v2 (0.2.0) não tinha as árvores como objetos; v3 tinha a mata
  * inteira; v4 só as árvores protegidas. A partir da v5 saem só as árvores do pedido de corte.
- * A v6 trouxe os pisos (chão pintado).
+ * A v6 trouxe os pisos (chão pintado) e a v7 os caminhos com setas (fluxo das carretas).
  */
 export function migrarProjeto(salvo: unknown, versao = 0): Foto {
   const s = (salvo ?? {}) as Partial<Foto>
   let arvores = s.arvores ?? arvoresIniciais()
   if (s.arvores && versao < 4) arvores = arvores.filter((a) => !naAreaDeCorte(a))
   else if (s.arvores && versao === 4) arvores = [...arvores, ...arvoresDaMataMantida(arvores)]
-  return { cotas: s.cotas ?? cotasDaFoto, elementos: s.elementos ?? [], arvores, pisos: s.pisos ?? [] }
+  return { cotas: s.cotas ?? cotasDaFoto, elementos: s.elementos ?? [], arvores, pisos: s.pisos ?? [], fluxos: s.fluxos ?? [] }
 }
 
 /** Num arrasto, o piso também não atravessa área protegida (cada ponto anda em linha reta). */
@@ -257,7 +281,8 @@ function selecaoValida(s: Selecao, f: Foto): Selecao {
     const restam = s.ids.filter((id) => ids.has(id))
     return restam.length ? { tipo: 'arvores', ids: restam } : null
   }
-  return (s.tipo === 'cota' ? f.cotas : s.tipo === 'piso' ? f.pisos : f.elementos).some((x) => x.id === s.id) ? s : null
+  const lista = s.tipo === 'cota' ? f.cotas : s.tipo === 'piso' ? f.pisos : s.tipo === 'fluxo' ? f.fluxos : f.elementos
+  return lista.some((x) => x.id === s.id) ? s : null
 }
 
 /** Modelo de relevo recalculado sempre que as cotas mudam. */
