@@ -6,6 +6,7 @@ import { terreno, extensao } from '../data/terreno'
 import { centroid, rng, scatter, type Vec2 } from '../geo/polygon'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
+import Elementos3D from './Elementos3D'
 
 /** Cota de referência: o 3D trabalha com alturas relativas a ela. */
 export const COTA_BASE = 770
@@ -22,6 +23,9 @@ function useAltura() {
 function Terreno() {
   const h = useAltura()
   const foto = useEstado((e) => e.camadas.foto)
+  const ferramenta = useEstado((e) => e.ferramenta)
+  const elevacao = useElevacao()
+  const { adicionarCota, selecionar } = useProjeto()
   const textura = useMemo(() => {
     const t = new THREE.TextureLoader().load(terreno.fotoAerea.arquivo)
     t.colorSpace = THREE.SRGBColorSpace
@@ -76,7 +80,17 @@ function Terreno() {
       <planeGeometry args={[4000, 4000]} />
       <meshStandardMaterial color="#7d8f5c" roughness={1} />
     </mesh>
-    <mesh geometry={geo} receiveShadow>
+    <mesh
+      geometry={geo}
+      receiveShadow
+      onClick={(ev) => {
+        if (ev.delta > 4) return // foi um arrasto de câmera
+        if (ferramenta === 'cota') {
+          const x = ev.point.x, y = -ev.point.z
+          adicionarCota(Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000, Math.round(elevacao.at(x, y) * 1000) / 1000)
+        } else selecionar(null)
+      }}
+    >
       {foto ? (
         <meshStandardMaterial map={textura} roughness={0.95} metalness={0} />
       ) : (
@@ -184,7 +198,7 @@ function Marcos() {
           <group key={nome} position={[x, z, -y]}>
             <mesh position={[0, 0.6, 0]} castShadow>
               <boxGeometry args={[0.15, 1.2, 0.15]} />
-              <meshStandardMaterial color="#e63946" />
+              <meshStandardMaterial color="#ff5a5f" />
             </mesh>
             <Rotulo texto={nome} posicao={[0, 2.6, 0]} />
           </group>
@@ -195,7 +209,7 @@ function Marcos() {
 }
 
 /** Etiqueta desenhada em textura (sem DOM), com tamanho fixo na tela. */
-function Rotulo({ texto, posicao, cor = '#e63946' }: { texto: string; posicao: [number, number, number]; cor?: string }) {
+function Rotulo({ texto, posicao, cor = '#ff5a5f' }: { texto: string; posicao: [number, number, number]; cor?: string }) {
   const tex = useMemo(() => {
     const c = document.createElement('canvas')
     c.width = 64
@@ -225,11 +239,21 @@ function Rotulo({ texto, posicao, cor = '#e63946' }: { texto: string; posicao: [
 function Cotas() {
   const h = useAltura()
   const cotas = useProjeto((p) => p.cotas)
-  const selecionada = useProjeto((p) => p.selecionada)
+  const selecao = useProjeto((p) => p.selecao)
+  const selecionar = useProjeto((p) => p.selecionar)
+  const selecionada = selecao?.tipo === 'cota' ? selecao.id : null
   return (
     <group>
       {cotas.map((c) => (
-        <mesh key={c.id} position={[c.x, h(c.x, c.y) + 0.3, -c.y]} scale={c.id === selecionada ? 2 : 1}>
+        <mesh
+          key={c.id}
+          position={[c.x, h(c.x, c.y) + 0.3, -c.y]}
+          scale={c.id === selecionada ? 2 : 1}
+          onClick={(ev) => {
+            ev.stopPropagation()
+            selecionar({ tipo: 'cota', id: c.id })
+          }}
+        >
           <sphereGeometry args={[0.45, 10, 8]} />
           <meshStandardMaterial color={c.origem === 'manual' ? '#5ce1e6' : '#ffd166'} emissive={c.origem === 'manual' ? '#0b5a5c' : '#7a5a00'} />
         </mesh>
@@ -249,11 +273,18 @@ function CameraInicial() {
 
 const SOL = new THREE.Vector3(120, 160, 80)
 
+/** Construções não são exageradas na vertical: só o chão sob elas acompanha o exagero. */
+function ElementosNoTerreno() {
+  return <Elementos3D h={useAltura()} />
+}
+
 export default function Scene3D() {
   const camadas = useEstado((e) => e.camadas)
+  const ferramenta = useEstado((e) => e.ferramenta)
+  const selecionar = useProjeto((p) => p.selecionar)
   return (
     <div className="scene3d">
-      <Canvas shadows camera={{ fov: 45, near: 0.5, far: 5000 }} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
+      <Canvas onPointerMissed={() => selecionar(null)} className={ferramenta === 'cota' ? 'cursor-cota' : ''} shadows camera={{ fov: 45, near: 0.5, far: 5000 }} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
         <CameraInicial />
         <Sky sunPosition={SOL.toArray()} turbidity={6} rayleigh={1.2} mieCoefficient={0.004} />
         <fog attach="fog" args={['#c9d8e6', 400, 1400]} />
@@ -272,15 +303,15 @@ export default function Scene3D() {
           shadow-bias={-0.0004}
         />
         <Terreno />
-        {camadas.perimetro && <LinhaNoChao pts={terreno.perimetro} cor="#e63946" largura={3} fechada />}
-        {camadas.perimetro && <Marcos />}
-        {camadas.recuo && <AreaNoChao pts={terreno.recuo.poligono} cor="#ff9f1c" opacidade={0.35} />}
-        {camadas.mata && !camadas.arvores && <LinhaNoChao pts={terreno.mata.poligono} cor="#2f8f46" largura={2} fechada tracejada />}
-        {camadas.mata && camadas.arvores && <Mata />}
-        {camadas.cotas && <Cotas />}
+        {camadas.divisas && <LinhaNoChao pts={terreno.perimetro} cor="#ff5a5f" largura={3} fechada />}
+        {camadas.divisas && <Marcos />}
+        {camadas.recuo && <AreaNoChao pts={terreno.recuo.poligono} cor="#ffb020" opacidade={0.35} />}
+        {camadas.mata && <Mata />}
+        {(camadas.relevo || ferramenta === 'cota') && <Cotas />}
+        <ElementosNoTerreno />
         <OrbitControls makeDefault target={[centro[0], 5, -centro[1]]} maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={1200} enableDamping />
       </Canvas>
-      <div className="dica-3d">Arraste para girar · botão direito para mover · role para aproximar</div>
+
     </div>
   )
 }
