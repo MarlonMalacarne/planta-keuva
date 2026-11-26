@@ -269,3 +269,51 @@ describe('árvores', () => {
     expect(new Set(migrado.map((a) => a.id)).size).toBe(migrado.length)
   })
 })
+
+describe('pisos (chão pintado)', () => {
+  const p = () => useProjeto.getState()
+  beforeEach(() => useProjeto.setState({ pisos: [], elementos: [], historico: [], aviso: null, selecao: null }))
+
+  it('desenha clicando nos cantos e conclui clicando no primeiro', async () => {
+    const { useEstado } = await import('./store')
+    const { marcarCanto } = await import('./desenho')
+    useEstado.getState().setFerramenta('piso')
+    useEstado.getState().setMaterialPiso('cascalho')
+    for (const c of [[40, 20], [70, 20], [70, 40], [40, 40]] as [number, number][]) marcarCanto(c, 0.5)
+    expect(useEstado.getState().rascunho).toHaveLength(4)
+    marcarCanto([40.2, 20.1], 0.5)
+    const [piso] = p().pisos
+    expect(piso).toMatchObject({ material: 'cascalho', nome: 'Cascalho 1' })
+    const { areaPiso } = await import('../model/pisos')
+    expect(areaPiso(piso)).toBeCloseTo(600, 6)
+    expect(p().selecao).toEqual({ tipo: 'piso', id: piso.id })
+    expect(useEstado.getState().ferramenta).toBe('selecionar')
+    expect(useEstado.getState().rascunho).toHaveLength(0)
+  })
+
+  it('edita, apaga e desfaz', () => {
+    const id = p().adicionarPiso('asfalto', [[0, 10], [20, 10], [20, 20]])!
+    p().editarPiso(id, { material: 'concreto' })
+    expect(p().pisos[0].material).toBe('concreto')
+    p().removerPiso(id)
+    expect(p().pisos).toHaveLength(0)
+    p().desfazer()
+    expect(p().pisos[0].material).toBe('concreto')
+    p().desfazer()
+    expect(p().pisos[0].material).toBe('asfalto')
+  })
+
+  it('não pavimenta a reserva nem a compensação', () => {
+    expect(p().adicionarPiso('asfalto', [[60, 70], [80, 70], [80, 90], [60, 90]])).toBeNull()
+    expect(p().aviso?.texto).toMatch(/Reserva legal/)
+    const id = p().adicionarPiso('asfalto', [[60, 40], [80, 40], [80, 60], [60, 60]])!
+    // arrastar para dentro da reserva para na borda
+    p().editarPiso(id, { pontos: [[60, 140], [80, 140], [80, 160], [60, 160]] }, false)
+    expect(p().pisos[0].pontos[0]).toEqual([60, 40])
+  })
+
+  it('projetos antigos ganham a lista de pisos vazia', async () => {
+    const { migrarProjeto } = await import('./projeto')
+    expect(migrarProjeto({ cotas: [], elementos: [], arvores: [] }, 5).pisos).toEqual([])
+  })
+})

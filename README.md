@@ -26,6 +26,11 @@ e (nos próximos passos) terraplanagem, modelagem, importação de modelos e ges
 - **Árvores**: ficam as da reserva legal, da compensação e da mata fora do pedido de corte; saem
   só as da área de supressão. Cada árvore é um objeto. Clique para selecionar, Shift + clique para somar,
   Shift + arraste na planta para pegar uma área. Arraste para mover, `Delete` apaga.
+- **Pintar o chão**: ferramenta do rolinho (tecla `P`) ou Adicionar > Piso. Escolha asfalto,
+  cascalho, concreto, bloquete, grama ou terra e clique nos cantos (clique duplo ou `Enter`
+  conclui; Shift + arraste faz um retângulo). O painel mostra área e perímetro.
+- **Caminhar**: no 3D, o botão "Caminhar" coloca você no terreno em primeira pessoa. `W A S D`
+  ou setas andam, arrastar olha em volta, Shift corre, `Esc` sai.
 - **Atualização automática**: ao abrir, o app procura versão nova e se instala com um clique.
 
 ## Instalar no Mac

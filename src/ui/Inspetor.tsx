@@ -1,22 +1,24 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Copy, Crosshair, ShieldAlert, Trash2, TreeDeciduous } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Crosshair, PaintRoller, ShieldAlert, Trash2, TreeDeciduous } from 'lucide-react'
 import { calcularResumo, terreno, fmt } from '../data/terreno'
-import { useElevacao, useProjeto, type Arvore, type Cota, type Elemento } from '../state/projeto'
+import { useElevacao, useProjeto, type Arvore, type Cota, type Elemento, type Piso } from '../state/projeto'
 import { areaProjecao, catalogo, coresSugeridas, volume } from '../model/elementos'
 import { areaInvadida } from '../model/protecao'
 import { situacaoArvore } from '../model/arvores'
+import { areaPiso, materiais, nomeAutomatico, ordemMateriais, perimetroPiso, type MaterialPiso } from '../model/pisos'
 import { CampoNumero } from './Campos'
 import { iconeElemento } from './icones'
 
 export default function Inspetor() {
-  const { selecao, elementos, cotas, arvores } = useProjeto()
+  const { selecao, elementos, cotas, arvores, pisos } = useProjeto()
+  const piso = selecao?.tipo === 'piso' ? pisos.find((p) => p.id === selecao.id) : undefined
   const el = selecao?.tipo === 'elemento' ? elementos.find((e) => e.id === selecao.id) : undefined
   const cota = selecao?.tipo === 'cota' ? cotas.find((c) => c.id === selecao.id) : undefined
   const ids = selecao?.tipo === 'arvores' ? new Set(selecao.ids) : null
   const arvs = ids ? arvores.filter((a) => ids.has(a.id)) : []
   return (
     <aside className="painel painel-dir vidro">
-      {el ? <InspetorElemento key={el.id} e={el} /> : cota ? <InspetorCota key={cota.id} c={cota} /> : arvs.length ? <InspetorArvores key={arvs.length === 1 ? arvs[0].id : 'varias'} lista={arvs} /> : <ResumoTerreno />}
+      {el ? <InspetorElemento key={el.id} e={el} /> : piso ? <InspetorPiso key={piso.id} p={piso} /> : cota ? <InspetorCota key={cota.id} c={cota} /> : arvs.length ? <InspetorArvores key={arvs.length === 1 ? arvs[0].id : 'varias'} lista={arvs} /> : <ResumoTerreno />}
     </aside>
   )
 }
@@ -91,6 +93,59 @@ function InspetorElemento({ e }: { e: Elemento }) {
         </button>
       </div>
       <p className="dica">Arraste o elemento para mover. Puxe as setas azuis para esticar uma face e o anel para girar. Segure Shift para passos finos.</p>
+    </div>
+  )
+}
+
+function InspetorPiso({ p }: { p: Piso }) {
+  const { editarPiso, removerPiso, pisos } = useProjeto()
+  const trocar = (material: MaterialPiso) => {
+    // Nome automático acompanha o material ("Asfalto 1" vira "Cascalho 2").
+    let nome = p.nome
+    if (nomeAutomatico(p.nome)) {
+      let n = 1
+      while (pisos.some((x) => x.id !== p.id && x.nome === `${materiais[material].nome} ${n}`)) n++
+      nome = `${materiais[material].nome} ${n}`
+    }
+    editarPiso(p.id, { material, nome })
+  }
+  return (
+    <div className="inspetor">
+      <div className="titulo-inspetor">
+        <span className="icone-tipo" style={{ background: materiais[p.material].cor }}>
+          <PaintRoller size={16} />
+        </span>
+        <input className="nome" value={p.nome} onChange={(ev) => editarPiso(p.id, { nome: ev.target.value }, false)} aria-label="Nome" />
+      </div>
+      <p className="tipo">Piso · {materiais[p.material].descricao.toLowerCase()}</p>
+
+      <h4>Material</h4>
+      <div className="grade-materiais">
+        {ordemMateriais.map((m) => (
+          <button key={m} className={m === p.material ? 'ativo' : ''} onClick={() => trocar(m)} aria-pressed={m === p.material}>
+            <span className={`amostra-piso piso-${m}`} />
+            {materiais[m].nome}
+          </button>
+        ))}
+      </div>
+
+      <div className="metricas">
+        <div>
+          <span>Área</span>
+          <b>{fmt.m2(areaPiso(p))}</b>
+        </div>
+        <div>
+          <span>Perímetro</span>
+          <b>{fmt.m(perimetroPiso(p), 1)}</b>
+        </div>
+      </div>
+
+      <div className="acoes">
+        <button className="botao-perigo" onClick={() => removerPiso(p.id)} title="Delete">
+          <Trash2 size={15} /> Apagar piso
+        </button>
+      </div>
+      <p className="dica">Na planta 2D, arraste o piso para mover e puxe os pontos brancos para mudar o formato. Option + clique num ponto tira o canto.</p>
     </div>
   )
 }

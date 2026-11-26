@@ -176,6 +176,26 @@ h4 { font-size: 11px; font-weight: 600; color: var(--texto-3); margin: 18px 0 8p
 .cartao.protegido b { color: #c9f5d9; }
 .alerta { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; padding: 10px 12px; border-radius: 14px; font-size: 12px; line-height: 1.45; color: #ffd9da; background: rgba(255, 90, 95, 0.16); border: 1px solid rgba(255, 110, 115, 0.4); }
 .alerta svg { flex: none; margin-top: 1px; color: #ff8a8e; }
+.paleta-piso { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 8px; border-radius: 999px; max-width: calc(100vw - 32px); }
+.paleta-piso .materiais { display: flex; gap: 2px; }
+.paleta-piso .materiais button { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px 0 7px; border: 0; border-radius: 999px; background: transparent; color: var(--texto-2); font-size: 12px; font-weight: 550; }
+.paleta-piso .materiais button:hover { background: rgba(255, 255, 255, 0.08); color: var(--texto); }
+.paleta-piso .materiais button.ativo { background: rgba(255, 255, 255, 0.16); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22); }
+.paleta-piso .estado { font-size: 11.5px; color: var(--texto-3); white-space: nowrap; padding: 0 4px; min-width: 150px; text-align: center; font-variant-numeric: tabular-nums; }
+.paleta-piso .botao-primario { height: 32px; }
+.botao-primario:disabled { opacity: 0.45; filter: saturate(0.5); cursor: default; }
+.amostra-piso { width: 18px; height: 18px; border-radius: 6px; flex: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
+.amostra-piso.piso-asfalto { background: radial-gradient(circle at 30% 30%, #56595f 0 1px, transparent 1.5px) 0 0 / 5px 5px, #3b3e44; }
+.amostra-piso.piso-cascalho { background: radial-gradient(circle, #c2b9a7 0 1.4px, transparent 1.8px) 0 0 / 5px 5px, radial-gradient(circle, #8b8273 0 1.2px, transparent 1.6px) 2px 2px / 6px 6px, #a79d8b; }
+.amostra-piso.piso-concreto { background: linear-gradient(#9d9a93 0 1px, transparent 1px) 0 0 / 9px 9px, linear-gradient(90deg, #9d9a93 0 1px, transparent 1px) 0 0 / 9px 9px, #c6c3bb; }
+.amostra-piso.piso-bloquete { background: linear-gradient(#7d5241 0 1px, transparent 1px) 0 0 / 6px 4px, linear-gradient(90deg, #7d5241 0 1px, transparent 1px) 0 0 / 6px 8px, #a3705a; }
+.amostra-piso.piso-grama { background: repeating-linear-gradient(80deg, #477a35 0 1px, transparent 1px 3px), #5e9a47; }
+.amostra-piso.piso-terra { background: radial-gradient(circle, #745838 0 1.3px, transparent 1.7px) 0 0 / 6px 6px, #8b6a49; }
+.amostra-piso.pequena { width: 15px; height: 15px; border-radius: 5px; }
+.grade-materiais { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.grade-materiais button { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px 0 8px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.05); color: var(--texto-2); font-size: 12.5px; font-weight: 550; }
+.grade-materiais button:hover { background: rgba(255, 255, 255, 0.1); color: var(--texto); }
+.grade-materiais button.ativo { border-color: rgba(143, 176, 255, 0.7); background: rgba(91, 140, 255, 0.2); color: #fff; }
 .aviso-tela { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 9px; padding: 10px 18px; border-radius: 999px; font-size: 12.5px; font-weight: 550; color: #fff; border-color: rgba(255, 120, 124, 0.55); white-space: nowrap; animation: aviso-entra 0.22s ease-out; }
 .aviso-tela svg { color: #ff8a8e; flex: none; }
 @keyframes aviso-entra { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -204,7 +224,7 @@ h4 { font-size: 11px; font-weight: 600; color: var(--texto-3); margin: 18px 0 8p
 .plan2d { position: absolute; inset: 0; overflow: hidden; }
 .plan2d > svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; user-select: none; }
 .plan2d > svg:active { cursor: grabbing; }
-.plan2d > svg.ferramenta-cota { cursor: crosshair; }
+.plan2d > svg.ferramenta-cota, .plan2d > svg.ferramenta-piso { cursor: crosshair; }
 .alvo-arrastavel { cursor: move; }
 .plan2d text { paint-order: stroke; stroke: rgba(0, 0, 0, 0.7); stroke-linejoin: round; }
 .rotulo-medida { fill: #fff; font-weight: 600; text-anchor: middle; dominant-baseline: middle; stroke-width: 0.25em; }
@@ -215,6 +235,11 @@ h4 { font-size: 11px; font-weight: 600; color: var(--texto-3); margin: 18px 0 8p
 .rotulo-protegida { fill: #c9f5d9; font-weight: 700; text-anchor: middle; dominant-baseline: middle; stroke-width: 0.25em; pointer-events: none; letter-spacing: 0.02em; }
 .rotulo-protegida-medida { fill: #9fe3b8; font-weight: 500; text-anchor: middle; dominant-baseline: middle; stroke-width: 0.25em; pointer-events: none; }
 .rotulo-supressao { fill: #f3c48e; font-weight: 600; text-anchor: middle; dominant-baseline: middle; stroke-width: 0.25em; pointer-events: none; }
+.rotulo-piso text { fill: #fff; font-weight: 650; text-anchor: middle; dominant-baseline: middle; stroke-width: 0.25em; pointer-events: none; }
+.rotulo-piso .medida { fill: #e3e7ee; font-weight: 500; }
+.rotulo-rascunho { fill: #fff; font-weight: 700; text-anchor: middle; dominant-baseline: middle; stroke-width: 0.25em; }
+.vertice-piso { fill: #fff; stroke: #5b8cff; cursor: grab; }
+.vertice-piso:hover { fill: #cfe0ff; }
 .rotulo-elemento-medida { fill: #d5dae3; text-anchor: middle; stroke-width: 0.22em; pointer-events: none; }
 .arvore { fill: rgba(52, 140, 78, 0.42); stroke: rgba(180, 235, 190, 0.75); cursor: pointer; }
 .arvore:hover { fill: rgba(80, 170, 105, 0.6); }
@@ -237,6 +262,13 @@ h4 { font-size: 11px; font-weight: 600; color: var(--texto-3); margin: 18px 0 8p
 
 /* ---------- 3D ---------- */
 .scene3d { position: absolute; inset: 0; }
+.scene3d-sobre { position: absolute; right: 316px; bottom: 16px; }
+.scene3d-sobre .botao-flutuante { display: inline-flex; align-items: center; gap: 7px; color: var(--texto); }
+.scene3d.caminhando canvas { cursor: grab; }
+.scene3d.caminhando canvas:active { cursor: grabbing; }
+.hud-caminhada { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 18px; padding: 8px 8px 8px 20px; border-radius: 999px; font-size: 12px; color: var(--texto-2); white-space: nowrap; }
+.hud-caminhada kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; margin-right: 3px; border-radius: 6px; font: 600 10.5px/1 inherit; color: #fff; background: rgba(255, 255, 255, 0.14); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+.hud-caminhada .botao-secundario { display: inline-flex; align-items: center; gap: 6px; }
 .cursor-cota { cursor: crosshair; }
 .carregando { position: absolute; inset: 0; display: grid; place-items: center; color: var(--texto-2); }
 

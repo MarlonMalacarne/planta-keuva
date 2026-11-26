@@ -6,18 +6,20 @@ import type { Vec2 } from '../geo/polygon'
 import { ElevationModel, type Cota } from '../geo/elevation'
 import { catalogo, difAngulo, lugarLivre, type Elemento, type TipoElemento } from '../model/elementos'
 import { arvoresDaMataMantida, arvoresIniciais, naAreaDeCorte, proximoIdArvore, type Arvore } from '../model/arvores'
-import { areaInvadida, areasDeObra } from '../model/protecao'
+import { areaInvadida, areasDeObra, poligonoInvade } from '../model/protecao'
+import { materiais, type MaterialPiso, type Piso } from '../model/pisos'
 
-export type { Cota, Elemento, Arvore }
+export type { Cota, Elemento, Arvore, Piso }
 
 const cotasDaFoto: Cota[] = terreno.cotas.map((c) => ({ ...c, origem: 'foto' as const }))
 
-export type Selecao = { tipo: 'cota' | 'elemento'; id: string } | { tipo: 'arvores'; ids: string[] } | null
+export type Selecao = { tipo: 'cota' | 'elemento' | 'piso'; id: string } | { tipo: 'arvores'; ids: string[] } | null
 
 interface Foto {
   cotas: Cota[]
   elementos: Elemento[]
   arvores: Arvore[]
+  pisos: Piso[]
 }
 
 interface Projeto extends Foto {
@@ -47,6 +49,11 @@ interface Projeto extends Foto {
   removerArvores: (ids: string[]) => void
   /** Repõe as árvores do terreno (protegidas + mata fora do pedido de corte). */
   restaurarArvores: () => void
+
+  /** Pinta um pedaço do chão (asfalto, cascalho...). Devolve null se cair numa área protegida. */
+  adicionarPiso: (material: MaterialPiso, pontos: Vec2[]) => string | null
+  editarPiso: (id: string, dados: Partial<Omit<Piso, 'id'>>, registrar?: boolean) => void
+  removerPiso: (id: string) => void
 }
 
 const LIMITE_HISTORICO = 100
@@ -58,7 +65,7 @@ function proximoId(prefixo: string, usados: { id: string }[]) {
   return `${prefixo}${n}`
 }
 
-function proximoNome(base: string, elementos: Elemento[]) {
+function proximoNome(base: string, elementos: { nome: string }[]) {
   const nomes = new Set(elementos.map((e) => e.nome))
   let n = 1
   while (nomes.has(`${base} ${n}`)) n++
@@ -69,7 +76,7 @@ function proximoNome(base: string, elementos: Elemento[]) {
 export const useProjeto = create<Projeto>()(
   persist(
     (set, get) => {
-      const foto = (): Foto => ({ cotas: get().cotas, elementos: get().elementos, arvores: get().arvores })
+      const foto = (): Foto => ({ cotas: get().cotas, elementos: get().elementos, arvores: get().arvores, pisos: get().pisos })
       const comHistorico = (mudanca: Partial<Foto>) => ({
         ...mudanca,
         historico: [...get().historico, foto()].slice(-LIMITE_HISTORICO),
@@ -78,6 +85,7 @@ export const useProjeto = create<Projeto>()(
         cotas: cotasDaFoto,
         elementos: [],
         arvores: arvoresIniciais(),
+        pisos: [],
         historico: [],
         selecao: null,
         aviso: null,
@@ -167,12 +175,37 @@ export const useProjeto = create<Projeto>()(
           set({ ...comHistorico({ arvores: get().arvores.filter((a) => !fora.has(a.id)) }), selecao: null })
         },
         restaurarArvores: () => set({ ...comHistorico({ arvores: arvoresIniciais() }), selecao: null }),
+
+        adicionarPiso: (material, pontos) => {
+          if (pontos.length < 3) return null
+          const invadida = poligonoInvade(pontos)
+          if (invadida) {
+            get().avisar(`${invadida.nome}: área protegida, não dá para pavimentar aí`)
+            return null
+          }
+          const id = proximoId('S', get().pisos)
+          const novo: Piso = { id, nome: proximoNome(materiais[material].nome, get().pisos), material, pontos }
+          set({ ...comHistorico({ pisos: [...get().pisos, novo] }), selecao: { tipo: 'piso', id } })
+          return id
+        },
+        editarPiso: (id, dados, registrar = true) => {
+          const antes = get().pisos.find((p) => p.id === id)
+          if (!antes) return
+          const n = { ...antes, ...dados }
+          if (dados.pontos && !poligonoInvade(antes.pontos)) {
+            const invadida = registrar ? poligonoInvade(n.pontos) : pisoInvadeNoCaminho(antes.pontos, n.pontos)
+            if (invadida) return get().avisar(`${invadida.nome}: área protegida, não dá para pavimentar aí`)
+          }
+          const pisos = get().pisos.map((p) => (p.id === id ? n : p))
+          set(registrar ? comHistorico({ pisos }) : { pisos })
+        },
+        removerPiso: (id) => set({ ...comHistorico({ pisos: get().pisos.filter((p) => p.id !== id) }), selecao: null }),
       }
     },
     {
       name: 'planta-keuva:projeto',
-      version: 5,
-      partialize: ({ cotas, elementos, arvores }) => ({ cotas, elementos, arvores }),
+      version: 6,
+      partialize: ({ cotas, elementos, arvores, pisos }) => ({ cotas, elementos, arvores, pisos }),
       migrate: migrarProjeto,
     },
   ),
@@ -181,13 +214,26 @@ export const useProjeto = create<Projeto>()(
 /**
  * v1 (0.1.0) só tinha cotas; v2 (0.2.0) não tinha as árvores como objetos; v3 tinha a mata
  * inteira; v4 só as árvores protegidas. A partir da v5 saem só as árvores do pedido de corte.
+ * A v6 trouxe os pisos (chão pintado).
  */
 export function migrarProjeto(salvo: unknown, versao = 0): Foto {
   const s = (salvo ?? {}) as Partial<Foto>
   let arvores = s.arvores ?? arvoresIniciais()
   if (s.arvores && versao < 4) arvores = arvores.filter((a) => !naAreaDeCorte(a))
   else if (s.arvores && versao === 4) arvores = [...arvores, ...arvoresDaMataMantida(arvores)]
-  return { cotas: s.cotas ?? cotasDaFoto, elementos: s.elementos ?? [], arvores }
+  return { cotas: s.cotas ?? cotasDaFoto, elementos: s.elementos ?? [], arvores, pisos: s.pisos ?? [] }
+}
+
+/** Num arrasto, o piso também não atravessa área protegida (cada ponto anda em linha reta). */
+function pisoInvadeNoCaminho(a: Vec2[], b: Vec2[]) {
+  if (a.length !== b.length) return poligonoInvade(b)
+  const passos = Math.ceil(Math.max(...a.map((p, i) => Math.hypot(b[i][0] - p[0], b[i][1] - p[1]))))
+  for (let k = 1; k <= passos; k++) {
+    const t = k / passos
+    const invadida = poligonoInvade(a.map((p, i) => [p[0] + (b[i][0] - p[0]) * t, p[1] + (b[i][1] - p[1]) * t] as Vec2))
+    if (invadida) return invadida
+  }
+  return poligonoInvade(b)
 }
 
 /** Primeira área protegida tocada indo de `a` até `b` em passos de até 1 m (ou 2°). */
@@ -211,7 +257,7 @@ function selecaoValida(s: Selecao, f: Foto): Selecao {
     const restam = s.ids.filter((id) => ids.has(id))
     return restam.length ? { tipo: 'arvores', ids: restam } : null
   }
-  return (s.tipo === 'cota' ? f.cotas : f.elementos).some((x) => x.id === s.id) ? s : null
+  return (s.tipo === 'cota' ? f.cotas : s.tipo === 'piso' ? f.pisos : f.elementos).some((x) => x.id === s.id) ? s : null
 }
 
 /** Modelo de relevo recalculado sempre que as cotas mudam. */

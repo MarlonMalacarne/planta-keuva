@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Crosshair, MousePointer2, Plus, TreeDeciduous, Undo2 } from 'lucide-react'
+import { Crosshair, MousePointer2, PaintRoller, Plus, TreeDeciduous, Undo2 } from 'lucide-react'
 import { useEstado, type Ferramenta } from '../state/store'
 import { PONTO_INICIAL, useProjeto } from '../state/projeto'
 import { catalogo, lugarLivre, type TipoElemento } from '../model/elementos'
@@ -8,6 +8,7 @@ import { iconeElemento } from './icones'
 
 const ferramentas: { id: Ferramenta; nome: string; tecla: string; Icone: typeof MousePointer2 }[] = [
   { id: 'selecionar', nome: 'Selecionar, mover e esticar', tecla: 'V', Icone: MousePointer2 },
+  { id: 'piso', nome: 'Pintar o chão (asfalto, cascalho...)', tecla: 'P', Icone: PaintRoller },
   { id: 'cota', nome: 'Marcar cota do terreno', tecla: 'C', Icone: Crosshair },
 ]
 
@@ -74,6 +75,20 @@ export default function BarraFerramentas() {
               </button>
             )
           })}
+          <button
+            onClick={() => {
+              setFerramenta('piso')
+              setMenu(false)
+            }}
+          >
+            <span className="icone-menu">
+              <PaintRoller size={18} />
+            </span>
+            <span>
+              <b>Piso</b>
+              <small>Pinte o chão: asfalto, cascalho, concreto, grama</small>
+            </span>
+          </button>
           <button onClick={novaArvore}>
             <span className="icone-menu verde">
               <TreeDeciduous size={18} />

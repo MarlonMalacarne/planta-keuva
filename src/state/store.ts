@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { Vec2 } from '../geo/polygon'
+import type { MaterialPiso } from '../model/pisos'
 
 export type Vista = '2d' | '3d'
-export type Ferramenta = 'selecionar' | 'cota'
+export type Ferramenta = 'selecionar' | 'cota' | 'piso'
 
 export interface Camadas {
   foto: boolean
@@ -26,12 +28,20 @@ interface Estado {
   exagero: number
   intervaloCurvas: number
   ferramenta: Ferramenta
+  /** Material escolhido na ferramenta de pintar o chão e os cantos já marcados. */
+  materialPiso: MaterialPiso
+  rascunho: Vec2[]
+  /** Andando pelo terreno em primeira pessoa (só no 3D). */
+  caminhando: boolean
   cursor: { x: number; y: number; z: number } | null
   setVista: (v: Vista) => void
   alternar: (c: keyof Camadas) => void
   setExagero: (v: number) => void
   setIntervalo: (v: number) => void
   setFerramenta: (f: Ferramenta) => void
+  setMaterialPiso: (m: MaterialPiso) => void
+  setRascunho: (r: Vec2[]) => void
+  setCaminhando: (c: boolean) => void
   setCursor: (c: Estado['cursor']) => void
 }
 
@@ -44,12 +54,18 @@ export const useEstado = create<Estado>()(
       exagero: 1,
       intervaloCurvas: 0.5,
       ferramenta: 'selecionar',
+      materialPiso: 'asfalto',
+      rascunho: [],
+      caminhando: false,
       cursor: null,
       setVista: (vista) => set({ vista }),
       alternar: (c) => set((s) => ({ camadas: { ...s.camadas, [c]: !s.camadas[c] } })),
       setExagero: (exagero) => set({ exagero }),
       setIntervalo: (intervaloCurvas) => set({ intervaloCurvas }),
-      setFerramenta: (ferramenta) => set({ ferramenta }),
+      setFerramenta: (ferramenta) => set({ ferramenta, rascunho: [] }),
+      setMaterialPiso: (materialPiso) => set({ materialPiso }),
+      setRascunho: (rascunho) => set({ rascunho }),
+      setCaminhando: (caminhando) => set({ caminhando }),
       setCursor: (cursor) => set({ cursor }),
     }),
     {

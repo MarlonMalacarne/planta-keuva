@@ -15,6 +15,8 @@ export default function Arvores3D({ h }: { h: (x: number, y: number) => number }
   const arvores = useProjeto((p) => p.arvores)
   const selecao = useProjeto((p) => p.selecao)
   const ferramenta = useEstado((s) => s.ferramenta)
+  const caminhando = useEstado((s) => s.caminhando)
+  const editando = ferramenta === 'selecionar' && !caminhando
   const { iniciar } = useArrasto()
   const troncos = useRef<THREE.InstancedMesh>(null)
   const copas = useRef<THREE.InstancedMesh>(null)
@@ -51,7 +53,7 @@ export default function Arvores3D({ h }: { h: (x: number, y: number) => number }
   const arvoreDo = (ev: ThreeEvent<MouseEvent | PointerEvent>): Arvore | undefined => (ev.instanceId === undefined ? undefined : arvores[ev.instanceId])
 
   const aoClicar = (ev: ThreeEvent<MouseEvent>) => {
-    if (ferramenta === 'cota' || ev.delta > 4) return
+    if (!editando || ev.delta > 4) return
     const a = arvoreDo(ev)
     if (!a) return
     ev.stopPropagation()
@@ -65,7 +67,7 @@ export default function Arvores3D({ h }: { h: (x: number, y: number) => number }
 
   // Arrastar uma árvore já selecionada move todas as selecionadas juntas.
   const aoApertar = (ev: ThreeEvent<PointerEvent>) => {
-    if (ferramenta === 'cota' || ev.button !== 0 || ev.nativeEvent.shiftKey) return
+    if (!editando || ev.button !== 0 || ev.nativeEvent.shiftKey) return
     const a = arvoreDo(ev)
     if (!a || !selecionadas.has(a.id)) return
     ev.stopPropagation()
@@ -101,6 +103,7 @@ export default function Arvores3D({ h }: { h: (x: number, y: number) => number }
     onClick: aoClicar,
     onPointerDown: aoApertar,
     onPointerOver: (ev: ThreeEvent<PointerEvent>) => {
+      if (!editando) return
       ev.stopPropagation()
       if (!document.body.style.cursor) document.body.style.cursor = 'pointer'
     },

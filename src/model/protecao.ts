@@ -14,7 +14,12 @@ export function pegada(e: Elemento): Vec2[] {
 
 /** Área protegida que o elemento invade, se invadir alguma. */
 export function areaInvadida(e: Elemento): AreaProtegida | undefined {
-  const p = pegada(e)
+  return poligonoInvade(pegada(e))
+}
+
+/** Área protegida que o contorno (um piso, por exemplo) toca, se tocar alguma. */
+export function poligonoInvade(p: Vec2[]): AreaProtegida | undefined {
+  if (p.length < 3) return undefined
   return areasProtegidas.find((a) => sobrepoe(p, a.poligono))
 }
 

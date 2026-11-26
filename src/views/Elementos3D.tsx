@@ -228,7 +228,8 @@ function ElementoNoTerreno({ e, h, selecionado }: { e: Elemento; h: (x: number, 
   const { iniciar, camera } = useArrasto()
   const grupo = useRef<THREE.Group>(null)
   const [etiqueta, setEtiqueta] = useState<Etiqueta>(null)
-  const editando = ferramenta !== 'cota'
+  const caminhando = useEstado((s) => s.caminhando)
+  const editando = ferramenta === 'selecionar' && !caminhando
 
   /** Começa um arrasto: guarda o desfazer só quando algo muda de fato. */
   const arrastar = (aplicar: (raio: THREE.Ray, ev: PointerEvent) => void) => {

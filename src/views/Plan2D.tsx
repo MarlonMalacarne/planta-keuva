@@ -7,6 +7,9 @@ import { useElevacao, useProjeto } from '../state/projeto'
 import { anguloEm, contorno, difAngulo, direcaoLado, esticar, girar, type Elemento, type Lado } from '../model/elementos'
 import type { Arvore } from '../model/arvores'
 import { areaInvadida } from '../model/protecao'
+import { retangulo } from '../model/pisos'
+import { concluirPiso, encaixar, marcarCanto } from '../state/desenho'
+import { PadroesPiso, PisoNaPlanta, RascunhoPiso } from './Pisos2D'
 
 interface Vista { cx: number; cy: number; esc: number } // esc = pixels por metro
 
@@ -26,6 +29,9 @@ type Alvo =
   | { tipo: 'face'; e0: Elemento; lado: Lado; x0: number; y0: number }
   | { tipo: 'giro'; e0: Elemento; ultimo: number; varrido: number }
   | { tipo: 'caixa'; x0: number; y0: number; somar: string[] }
+  | { tipo: 'piso'; id: string; originais: Vec2[]; x0: number; y0: number }
+  | { tipo: 'vertice'; id: string; i: number }
+  | { tipo: 'retangulo'; x0: number; y0: number }
   | { tipo: 'nada' }
 type Arrasto = { x: number; y: number; cx: number; cy: number; moveu: boolean; marcado: boolean; alvo?: Alvo }
 const LADOS: Lado[] = ['x+', 'x-', 'y+', 'y-']
@@ -41,7 +47,10 @@ export default function Plan2D() {
   const setCursor = useEstado((e) => e.setCursor)
   const ferramenta = useEstado((e) => e.ferramenta)
   const elevacao = useElevacao()
-  const { cotas, elementos, arvores, selecao, selecionar, adicionarCota, editarCota, editarElemento, editarArvores, marcar } = useProjeto()
+  const { cotas, elementos, arvores, pisos, selecao, selecionar, adicionarCota, editarCota, editarElemento, editarArvores, editarPiso, marcar } = useProjeto()
+  const rascunho = useEstado((e) => e.rascunho)
+  const materialPiso = useEstado((e) => e.materialPiso)
+  const [mouse, setMouse] = useState<Vec2 | null>(null)
   const arrasto = useRef<Arrasto | null>(null)
   const [caixaSel, setCaixaSel] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const [etiqueta, setEtiqueta] = useState<{ texto: string; x: number; y: number } | null>(null)
@@ -132,6 +141,7 @@ export default function Plan2D() {
   const selElem = selecao?.tipo === 'elemento' ? selecao.id : null
   const elemSel = selElem ? elementos.find((e) => e.id === selElem) : undefined
   const arvSel = useMemo(() => new Set(selecao?.tipo === 'arvores' ? selecao.ids : []), [selecao])
+  const selPiso = selecao?.tipo === 'piso' ? selecao.id : null
 
   return (
     <div className="plan2d">
@@ -147,9 +157,14 @@ export default function Plan2D() {
           const arv = t.getAttribute?.('data-arvore')
           const alca = t.closest?.('[data-alca]')?.getAttribute('data-alca')
           const elem = t.closest?.('[data-elemento]')?.getAttribute('data-elemento')
+          const piso = t.closest?.('[data-piso]')?.getAttribute('data-piso')
+          const vertice = t.getAttribute?.('data-vertice')
           let alvo: Alvo | undefined
           const [mx, my] = paraMundo(e.clientX, e.clientY)
-          if (ferramenta !== 'cota') {
+          if (ferramenta === 'piso') {
+            // Pintando o chão: clique marca canto (no soltar), Shift + arraste faz um retângulo.
+            if (e.shiftKey) alvo = { tipo: 'retangulo', x0: mx, y0: my }
+          } else if (ferramenta !== 'cota') {
             if (alca && elemSel) {
               alvo = alca === 'giro' ? { tipo: 'giro', e0: elemSel, ultimo: anguloEm(elemSel, [mx, my]), varrido: 0 } : { tipo: 'face', e0: elemSel, lado: alca as Lado, x0: mx, y0: my }
             } else if (cota) {
@@ -160,6 +175,13 @@ export default function Plan2D() {
               const el = elementos.find((x) => x.id === elem)!
               alvo = { tipo: 'elemento', id: elem, dx: el.x - mx, dy: el.y - my }
               selecionar({ tipo: 'elemento', id: elem })
+            } else if (vertice !== null && vertice !== undefined && piso) {
+              const pp = pisos.find((x) => x.id === piso)!
+              if (e.altKey && pp.pontos.length > 3) {
+                // Option + clique tira o canto.
+                editarPiso(piso, { pontos: pp.pontos.filter((_, i) => i !== Number(vertice)) })
+                alvo = { tipo: 'nada' }
+              } else alvo = { tipo: 'vertice', id: piso, i: Number(vertice) }
             } else if (arv) {
               const atuais = selecao?.tipo === 'arvores' ? selecao.ids : []
               if (e.shiftKey) {
@@ -173,6 +195,10 @@ export default function Plan2D() {
                 const set = new Set(ids)
                 alvo = { tipo: 'arvores', originais: arvores.filter((a) => set.has(a.id)), x0: mx, y0: my }
               }
+            } else if (piso && !e.shiftKey) {
+              const pp = pisos.find((x) => x.id === piso)!
+              selecionar({ tipo: 'piso', id: piso })
+              alvo = { tipo: 'piso', id: piso, originais: pp.pontos, x0: mx, y0: my }
             } else if (e.shiftKey) {
               alvo = { tipo: 'caixa', x0: mx, y0: my, somar: selecao?.tipo === 'arvores' ? selecao.ids : [] }
             }
@@ -182,12 +208,13 @@ export default function Plan2D() {
         onPointerMove={(e) => {
           const [x, y] = paraMundo(e.clientX, e.clientY)
           setCursor({ x, y, z: elevacao.at(x, y) })
+          if (ferramenta === 'piso') setMouse(rascunho.length ? encaixar([x, y], 10 * px) : null)
           const a = arrasto.current
           if (!a) return
           if (Math.hypot(e.clientX - a.x, e.clientY - a.y) > 3) a.moveu = true
           if (!a.moveu) return
           const alvo = a.alvo
-          const edita = alvo && alvo.tipo !== 'caixa' && alvo.tipo !== 'nada'
+          const edita = alvo && alvo.tipo !== 'caixa' && alvo.tipo !== 'nada' && alvo.tipo !== 'retangulo'
           if (edita && !a.marcado) {
             marcar()
             a.marcado = true
@@ -216,12 +243,27 @@ export default function Plan2D() {
             const novo = girar(alvo.e0, alvo.varrido, fino ? 1 : 5)
             editarElemento(alvo.e0.id, novo, false)
             setEtiqueta({ texto: `Giro ${(novo.rot ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}°`, x: x + 14 * px, y: y + 14 * px })
-          } else if (alvo.tipo === 'caixa') setCaixaSel({ x0: alvo.x0, y0: alvo.y0, x1: x, y1: y })
+          } else if (alvo.tipo === 'piso') {
+            const passo = fino ? 0.05 : 0.5
+            const dx = noPasso(x - alvo.x0, passo), dy = noPasso(y - alvo.y0, passo)
+            editarPiso(alvo.id, { pontos: alvo.originais.map(([px0, py0]) => [arred(px0 + dx), arred(py0 + dy)] as Vec2) }, false)
+          } else if (alvo.tipo === 'vertice') {
+            const pp = pisos.find((p) => p.id === alvo.id)
+            if (!pp) return
+            const q = fino ? ([arred(x), arred(y)] as Vec2) : encaixarSem(pp.pontos, [x, y], 10 * px)
+            editarPiso(alvo.id, { pontos: pp.pontos.map((p, i) => (i === alvo.i ? q : p)) }, false)
+          } else if (alvo.tipo === 'caixa' || alvo.tipo === 'retangulo') setCaixaSel({ x0: alvo.x0, y0: alvo.y0, x1: x, y1: y })
         }}
         onPointerUp={(e) => {
           const a = arrasto.current
           arrasto.current = null
           setEtiqueta(null)
+          if (a?.alvo?.tipo === 'retangulo') {
+            const c = caixaSel
+            setCaixaSel(null)
+            if (c && a.moveu) concluirPiso(retangulo([arred(c.x0), arred(c.y0)], [arred(c.x1), arred(c.y1)]))
+            return
+          }
           if (a?.alvo?.tipo === 'caixa') {
             const c = caixaSel
             setCaixaSel(null)
@@ -238,12 +280,17 @@ export default function Plan2D() {
           if (ferramenta === 'cota') {
             const [x, y] = paraMundo(e.clientX, e.clientY)
             adicionarCota(arred(x), arred(y), arred(elevacao.at(x, y)))
-          } else selecionar(null)
+          } else if (ferramenta === 'piso') marcarCanto(paraMundo(e.clientX, e.clientY), 10 * px)
+          else selecionar(null)
         }}
-        onPointerLeave={() => setCursor(null)}
-        onDoubleClick={enquadrar}
+        onPointerLeave={() => {
+          setCursor(null)
+          setMouse(null)
+        }}
+        onDoubleClick={() => (ferramenta === 'piso' ? concluirPiso() : enquadrar())}
       >
         <defs>
+          <PadroesPiso />
           <pattern id="hachura-recuo" width={2} height={2} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1={0} y1={0} x2={0} y2={2} stroke="#ffb020" strokeWidth={0.35} />
           </pattern>
@@ -277,6 +324,10 @@ export default function Plan2D() {
             <path d={caminho(terreno.recuo.poligono, true)} fill="#ffb020" fillOpacity={0.12} />
           </g>
         )}
+
+        {pisos.map((p) => (
+          <PisoNaPlanta key={p.id} p={p} px={px} fonte={fonte} selecionado={p.id === selPiso && ferramenta === 'selecionar'} />
+        ))}
 
         {mostrarRelevo && (
           <g clipPath="url(#recorte-lote)">
@@ -338,7 +389,12 @@ export default function Plan2D() {
 
         {elemSel && ferramenta !== 'cota' && <Alcas2D e={elemSel} px={px} />}
 
-        {caixaSel && (
+        {ferramenta === 'piso' && <RascunhoPiso pontos={rascunho} mouse={mouse} material={materialPiso} px={px} fonte={fonte} />}
+        {caixaSel && ferramenta === 'piso' && (
+          <RascunhoPiso pontos={retangulo([caixaSel.x0, caixaSel.y0], [caixaSel.x1, caixaSel.y1])} mouse={null} material={materialPiso} px={px} fonte={fonte} />
+        )}
+
+        {caixaSel && ferramenta !== 'piso' && (
           <rect
             x={Math.min(caixaSel.x0, caixaSel.x1)}
             y={-Math.max(caixaSel.y0, caixaSel.y1)}
@@ -449,6 +505,12 @@ function Pegada({ e, px, fonte, selecionado }: { e: Elemento; px: number; fonte:
       </text>
     </g>
   )
+}
+
+/** Encaixe de um canto arrastado: gruda nos cantos conhecidos, menos nos do próprio piso. */
+function encaixarSem(proprios: Vec2[], p: Vec2, tolerancia: number): Vec2 {
+  const q = encaixar(p, tolerancia)
+  return proprios.some((c) => c[0] === q[0] && c[1] === q[1]) ? [arred(p[0]), arred(p[1])] : q
 }
 
 /** Ponto da face `lado`, afastado `folga` metros para fora. */

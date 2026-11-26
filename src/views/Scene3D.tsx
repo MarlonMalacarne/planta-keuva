@@ -1,14 +1,19 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { Line, OrbitControls, Sky } from '@react-three/drei'
 import * as THREE from 'three'
 import { areasProtegidas, terreno, extensao } from '../data/terreno'
-import { centroid, dist, type Vec2 } from '../geo/polygon'
+import { centroid, type Vec2 } from '../geo/polygon'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
 import Elementos3D from './Elementos3D'
 import Arvores3D from './Arvores3D'
 import Etiqueta3D from './Etiqueta3D'
+import Pisos3D from './Pisos3D'
+import Caminhada from './Caminhada'
+import { Footprints, LogOut } from 'lucide-react'
+import { geometriaNoChao } from './chao3d'
+import { concluirPiso, marcarCanto } from '../state/desenho'
 import { areaInvadida, pegada } from '../model/protecao'
 
 /** Cota de referência: o 3D trabalha com alturas relativas a ela. */
@@ -86,9 +91,11 @@ function Terreno() {
     <mesh
       geometry={geo}
       receiveShadow
+      onDoubleClick={() => ferramenta === 'piso' && concluirPiso()}
       onClick={(ev) => {
-        if (ev.delta > 4) return // foi um arrasto de câmera
-        if (ferramenta === 'cota') {
+        if (ev.delta > 4 || useEstado.getState().caminhando) return // foi um arrasto de câmera
+        if (ferramenta === 'piso') marcarCanto([ev.point.x, -ev.point.z], 1.2)
+        else if (ferramenta === 'cota') {
           const x = ev.point.x, y = -ev.point.z
           adicionarCota(Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000, Math.round(elevacao.at(x, y) * 1000) / 1000)
         } else selecionar(null)
@@ -129,25 +136,7 @@ function LinhaNoChao({ pts, cor, largura = 3, fechada = false, tracejada = false
 /** Superfície translúcida que acompanha o relevo (recuo, reserva...). */
 function AreaNoChao({ pts, cor, opacidade }: { pts: Vec2[]; cor: string; opacidade: number }) {
   const h = useAltura()
-  const geo = useMemo(() => {
-    const contorno = pts.map(([x, y]) => new THREE.Vector2(x, y))
-    // Triângulos grandes ficariam retos e sumiriam sob o relevo: divide até lados de ~3 m.
-    const pilha = THREE.ShapeUtils.triangulateShape(contorno, []).map((t) => t.map((i) => pts[i]) as [Vec2, Vec2, Vec2])
-    const meio = (a: Vec2, b: Vec2): Vec2 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-    const pos: number[] = []
-    while (pilha.length) {
-      const [a, b, c] = pilha.pop()!
-      if (Math.max(dist(a, b), dist(b, c), dist(c, a)) > 3) {
-        const ab = meio(a, b), bc = meio(b, c), ca = meio(c, a)
-        pilha.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca])
-        continue
-      }
-      for (const [x, y] of [a, b, c]) pos.push(x, h(x, y) + 0.12, -y)
-    }
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-    return g
-  }, [pts, h])
+  const geo = useMemo(() => geometriaNoChao(pts, h, 0.12), [pts, h])
   useEffect(() => () => geo.dispose(), [geo])
   return (
     <mesh geometry={geo} renderOrder={1}>
@@ -259,6 +248,14 @@ function ArvoresNoTerreno() {
   return <Arvores3D h={useAltura()} />
 }
 
+function PisosNoTerreno() {
+  return <Pisos3D h={useAltura()} />
+}
+
+function CaminhadaNoTerreno({ aoSair }: { aoSair: (alvo: [number, number, number]) => void }) {
+  return <Caminhada h={useAltura()} aoSair={aoSair} />
+}
+
 /** Reserva legal e compensação (verde, não se constrói) e a supressão autorizada (tracejada). */
 function AreasProtegidas() {
   const h = useAltura()
@@ -294,9 +291,18 @@ function Invasoes() {
 export default function Scene3D() {
   const camadas = useEstado((e) => e.camadas)
   const ferramenta = useEstado((e) => e.ferramenta)
+  const caminhando = useEstado((e) => e.caminhando)
   const selecionar = useProjeto((p) => p.selecionar)
+  const [alvoOrbita, setAlvoOrbita] = useState<[number, number, number]>([centro[0], 5, -centro[1]])
+  // Saindo do 3D (ou do app), a caminhada acaba.
+  useEffect(() => () => useEstado.getState().setCaminhando(false), [])
+  const caminhar = () => {
+    useEstado.getState().setFerramenta('selecionar')
+    selecionar(null)
+    useEstado.getState().setCaminhando(true)
+  }
   return (
-    <div className="scene3d">
+    <div className={`scene3d ${caminhando ? 'caminhando' : ''}`}>
       <Canvas onPointerMissed={() => selecionar(null)} className={ferramenta === 'cota' ? 'cursor-cota' : ''} shadows camera={{ fov: 45, near: 0.5, far: 5000 }} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
         <CameraInicial />
         <Depuracao />
@@ -323,10 +329,38 @@ export default function Scene3D() {
         {camadas.mata && <AreasProtegidas />}
         {camadas.mata && <ArvoresNoTerreno />}
         <Invasoes />
+        <PisosNoTerreno />
         {(camadas.relevo || ferramenta === 'cota') && <Cotas />}
         <ElementosNoTerreno />
-        <OrbitControls makeDefault target={[centro[0], 5, -centro[1]]} maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={1200} enableDamping />
+        {caminhando ? (
+          <CaminhadaNoTerreno aoSair={setAlvoOrbita} />
+        ) : (
+          <OrbitControls makeDefault target={alvoOrbita} maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={1200} enableDamping />
+        )}
       </Canvas>
+      {caminhando ? (
+        <div className="hud-caminhada vidro" role="status">
+          <span>
+            <kbd>W</kbd>
+            <kbd>A</kbd>
+            <kbd>S</kbd>
+            <kbd>D</kbd> ou setas andam
+          </span>
+          <span>Arraste para olhar</span>
+          <span>
+            <kbd>Shift</kbd> corre
+          </span>
+          <button className="botao-secundario" onClick={() => useEstado.getState().setCaminhando(false)} title="Sair (Esc)">
+            <LogOut size={15} /> Sair
+          </button>
+        </div>
+      ) : (
+        <div className="scene3d-sobre">
+          <button className="botao-flutuante" onClick={caminhar} title="Andar pelo terreno em primeira pessoa">
+            <Footprints size={15} /> Caminhar
+          </button>
+        </div>
+      )}
 
     </div>
   )

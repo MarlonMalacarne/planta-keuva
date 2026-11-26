@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Eye, EyeOff, LandPlot, TreeDeciduous } from 'lucide-react'
+import { areaPiso } from '../model/pisos'
+import { fmt } from '../data/terreno'
 import { nomesCamadas, useEstado, type Camadas } from '../state/store'
 import { useProjeto } from '../state/projeto'
 import { iconeElemento } from './icones'
 
 export default function PainelProjeto() {
   const { camadas, alternar, exagero, setExagero, intervaloCurvas, setIntervalo } = useEstado()
-  const { elementos, selecao, selecionar, cotas, arvores, restaurarArvores } = useProjeto()
+  const { elementos, pisos, selecao, selecionar, cotas, arvores, restaurarArvores } = useProjeto()
   const todasArvores = selecao?.tipo === 'arvores' && selecao.ids.length === arvores.length && arvores.length > 0
   const [ajustes, setAjustes] = useState(false)
 
@@ -26,7 +28,12 @@ export default function PainelProjeto() {
             </button>
           )
         })}
-        {!elementos.length && <p className="vazio">Use “Adicionar” para colocar galpões, prédios e tanques.</p>}
+        {pisos.map((p) => (
+          <button key={p.id} className={`item recuado ${selecao?.tipo === 'piso' && selecao.id === p.id ? 'ativo' : ''}`} onClick={() => selecionar({ tipo: 'piso', id: p.id })}>
+            <span className={`amostra-piso pequena piso-${p.material}`} /> {p.nome} <small>{fmt.m2(areaPiso(p))}</small>
+          </button>
+        ))}
+        {!elementos.length && !pisos.length && <p className="vazio">Use “Adicionar” para colocar galpões, prédios e tanques.</p>}
         {arvores.length > 0 ? (
           <button className={`item recuado ${todasArvores ? 'ativo' : ''}`} onClick={() => selecionar({ tipo: 'arvores', ids: arvores.map((a) => a.id) })} title="Seleciona todas as árvores">
             <TreeDeciduous size={15} /> Árvores <small>{arvores.length.toLocaleString('pt-BR')}</small>

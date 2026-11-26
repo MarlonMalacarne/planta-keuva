@@ -27,6 +27,13 @@ da Keuva e gerir a obra. Usuário final: Marlon, não programa; textos da interf
   supressão; a v4, que só tinha as protegidas, ganha de volta a mata fora do corte). A mata fora do
   corte não é bloqueada, mas não conta como área livre e o `lugarLivre` evita árvores.
   Seleção múltipla só para árvores: `{ tipo: 'arvores', ids }`.
+- Pisos (chão pintado: asfalto, cascalho, concreto, bloquete, grama, terra): `src/model/pisos.ts`,
+  em `projeto.ts` (persist v6, `selecao` `{ tipo: 'piso', id }`). Ferramenta `piso` (tecla P): o
+  desenho em andamento fica em `useEstado().rascunho`; `src/state/desenho.ts` marca cantos (encaixe
+  nos cantos do lote/pisos/elementos) e conclui. 2D em `Pisos2D.tsx` (padrões SVG), 3D em
+  `Pisos3D.tsx` (texturas de canvas em `chao3d.ts`). Não entram na reserva/compensação.
+- Caminhar em primeira pessoa (`Caminhada.tsx`, `useEstado().caminhando`): troca o OrbitControls,
+  WASD/setas + arrastar para olhar, olhos a 1,7 m, não atravessa elementos; Esc sai.
 - Edição direta estilo Shapr3D: alças nas faces (`esticar`, a face oposta fica parada), topo
   (`esticarAltura`) e anel de giro (`girar`), no 3D (`Elementos3D.tsx`, arrastos em `arrasto3d.ts`)
   e na planta (`Plan2D.tsx`). Passo 0,5 m / 5°, Shift = fino.
