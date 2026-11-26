@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { terreno, extensao, fmt } from '../data/terreno'
+import { areasProtegidas, terreno, extensao, fmt } from '../data/terreno'
 import { bbox, centroid, dist, type Vec2 } from '../geo/polygon'
 import { contours } from '../geo/elevation'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
 import { anguloEm, contorno, difAngulo, direcaoLado, esticar, girar, type Elemento, type Lado } from '../model/elementos'
 import type { Arvore } from '../model/arvores'
+import { areaInvadida } from '../model/protecao'
 
 interface Vista { cx: number; cy: number; esc: number } // esc = pixels por metro
 
@@ -246,6 +247,9 @@ export default function Plan2D() {
           <pattern id="hachura-recuo" width={2} height={2} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1={0} y1={0} x2={0} y2={2} stroke="#ffb020" strokeWidth={0.35} />
           </pattern>
+          <pattern id="hachura-protegida" width={3} height={3} patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+            <line x1={0} y1={0} x2={0} y2={3} stroke="#3fd27a" strokeWidth={0.45} strokeOpacity={0.75} />
+          </pattern>
           <clipPath id="recorte-lote">
             <path d={caminho(lote, true)} />
           </clipPath>
@@ -256,7 +260,15 @@ export default function Plan2D() {
         {camadas.foto && <image href={f.arquivo} x={f.xMin} y={-f.yMax} width={f.largura} height={f.altura} preserveAspectRatio="none" opacity={0.8} />}
 
         {camadas.mata && (
-          <path d={caminho(terreno.mata.poligono, true)} fill="#3fa35b" fillOpacity={camadas.foto ? 0.06 : 0.18} stroke="#3fa35b" strokeOpacity={0.7} strokeWidth={1.2 * px} strokeDasharray={`${6 * px} ${4 * px}`} />
+          <g className="areas-protegidas">
+            <path d={caminho(terreno.supressao.poligono, true)} fill="#e0a060" fillOpacity={0.07} stroke="#f0b070" strokeOpacity={0.9} strokeWidth={1.4 * px} strokeDasharray={`${7 * px} ${5 * px}`} />
+            {areasProtegidas.map((a) => (
+              <g key={a.id}>
+                <path d={caminho(a.poligono, true)} fill="url(#hachura-protegida)" />
+                <path d={caminho(a.poligono, true)} fill="#2fbf6a" fillOpacity={camadas.foto ? 0.16 : 0.24} stroke="#3fd27a" strokeWidth={2 * px} strokeLinejoin="round" />
+              </g>
+            ))}
+          </g>
         )}
 
         {camadas.recuo && (
@@ -317,6 +329,8 @@ export default function Plan2D() {
             })}
           </g>
         )}
+
+        {camadas.mata && <RotulosProtegidas fonte={fonte} />}
 
         {elementos.map((e) => (
           <Pegada key={e.id} e={e} px={px} fonte={fonte} selecionado={e.id === selElem} />
@@ -381,8 +395,41 @@ export default function Plan2D() {
 }
 
 /** Projeção do elemento em planta, com nome e medidas. */
+const centroSupressao = centroid(terreno.supressao.poligono)
+
+/** Nomes das áreas do laudo, por cima das árvores. */
+function RotulosProtegidas({ fonte }: { fonte: number }) {
+  return (
+    <g>
+      {areasProtegidas.map((a) => {
+        const [x, y] = centroid(a.poligono)
+        const b = bbox(a.poligono)
+        // A compensação é uma faixa estreita em pé: o nome vai deitado ao longo dela.
+        const emPe = b.height > b.width * 2
+        return (
+          <g key={a.id} transform={emPe ? `rotate(-90 ${x} ${-y})` : undefined}>
+            <text x={x} y={-y - fonte * 0.6} fontSize={fonte * 1.05} className="rotulo-protegida">
+              {a.curto}
+            </text>
+            <text x={x} y={-y + fonte * 0.6} fontSize={fonte * 0.85} className="rotulo-protegida-medida">
+              {a.areaM2 >= 1000 ? `${(a.areaM2 / 10000).toLocaleString('pt-BR')} ha` : fmt.m2(a.areaM2)} · não construir
+            </text>
+          </g>
+        )
+      })}
+      <text x={centroSupressao[0]} y={-centroSupressao[1] - fonte * 0.55} fontSize={fonte * 0.85} className="rotulo-supressao">
+        Supressão autorizada
+      </text>
+      <text x={centroSupressao[0]} y={-centroSupressao[1] + fonte * 0.55} fontSize={fonte * 0.75} className="rotulo-supressao">
+        ligustros · 0,49 ha
+      </text>
+    </g>
+  )
+}
+
 function Pegada({ e, px, fonte, selecionado }: { e: Elemento; px: number; fonte: number; selecionado: boolean }) {
-  const cor = selecionado ? COR_SELECAO : '#ffffff'
+  const invadida = useMemo(() => !!areaInvadida(e), [e])
+  const cor = invadida ? '#ff5a5f' : selecionado ? COR_SELECAO : '#ffffff'
   const forma =
     e.tipo === 'tanque' ? (
       <circle cx={e.x} cy={-e.y} r={e.largura / 2} />
@@ -391,7 +438,7 @@ function Pegada({ e, px, fonte, selecionado }: { e: Elemento; px: number; fonte:
     )
   return (
     <g data-elemento={e.id} className="alvo-arrastavel">
-      <g fill={e.cor} fillOpacity={0.85} stroke={cor} strokeWidth={(selecionado ? 2.5 : 1.2) * px}>
+      <g fill={e.cor} fillOpacity={0.85} stroke={cor} strokeWidth={(selecionado || invadida ? 2.5 : 1.2) * px} strokeDasharray={invadida ? `${5 * px} ${3 * px}` : undefined}>
         {forma}
       </g>
       <text x={e.x} y={-e.y - fonte * 0.4} fontSize={fonte} className="rotulo-elemento">

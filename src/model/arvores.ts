@@ -1,7 +1,7 @@
-import { terreno } from '../data/terreno'
-import { rng, scatter } from '../geo/polygon'
+import { areasProtegidas } from '../data/terreno'
+import { contains, rng, scatter } from '../geo/polygon'
 
-/** Árvore da mata, editável como qualquer objeto. Medidas em metros. */
+/** Árvore do terreno, editável como qualquer objeto. Medidas em metros. */
 export interface Arvore {
   id: string
   x: number
@@ -14,17 +14,22 @@ export interface Arvore {
 const r2 = (v: number) => Math.round(v * 100) / 100
 const r1 = (v: number) => Math.round(v * 10) / 10
 
-/** Árvores geradas sobre a mancha de mata da foto (sempre as mesmas). */
-export function arvoresDaMata(): Arvore[] {
+/** Árvores da reserva legal e da compensação ambiental (sempre as mesmas). */
+export function arvoresProtegidas(): Arvore[] {
   const r = rng(7)
-  return scatter(terreno.mata.poligono, 5.5, 42).map(([x, y], i) => ({
-    id: `T${i + 1}`,
-    x: r2(x),
-    y: r2(y),
-    altura: r1(7 + r() * 9),
-    copa: r1(2 * (2.2 + r() * 2.4)),
-  }))
+  return areasProtegidas
+    .flatMap((a, k) => scatter(a.poligono, 5.5, 42 + k))
+    .map(([x, y], i) => ({
+      id: `T${i + 1}`,
+      x: r2(x),
+      y: r2(y),
+      altura: r1(7 + r() * 9),
+      copa: r1(2 * (2.2 + r() * 2.4)),
+    }))
 }
+
+/** A árvore fica numa área protegida (reserva legal ou compensação). */
+export const protegida = (a: Pick<Arvore, 'x' | 'y'>) => areasProtegidas.some((p) => contains(p.poligono, [a.x, a.y]))
 
 /** Variação visual estável por árvore (giro, achatamento e tom da copa), tirada do id. */
 export function variacao(id: string) {

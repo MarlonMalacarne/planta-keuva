@@ -2034,6 +2034,90 @@
    ]
   ]
  },
+ "laudo": "Laudo Técnico Agronômico (ART 14725882), Imagens 3 e 4. Reserva e compensação foram desenhadas à mão no laudo: aqui ficam com as áreas oficiais (0,4 ha e 600 m²) encostadas nas divisas C–D e D–E e na linha V06–V07. A supressão segue os vértices georreferenciados V01–V09.",
+ "reservaLegal": {
+  "areaM2": 4000,
+  "poligono": [
+   [
+    28.987,
+    121.567
+   ],
+   [
+    112.572,
+    124.731
+   ],
+   [
+    114.483,
+    75.374
+   ],
+   [
+    30.739,
+    75.374
+   ]
+  ]
+ },
+ "compensacao": {
+  "areaM2": 600,
+  "poligono": [
+   [
+    20.399,
+    60.259
+   ],
+   [
+    31.34,
+    59.507
+   ],
+   [
+    28.88,
+    124.384
+   ],
+   [
+    21.208,
+    124.384
+   ]
+  ]
+ },
+ "supressao": {
+  "areaM2": 4900,
+  "poligono": [
+   [
+    -45.685,
+    171.277
+   ],
+   [
+    -44.582,
+    144.599
+   ],
+   [
+    -38.105,
+    110.929
+   ],
+   [
+    -29.861,
+    89.305
+   ],
+   [
+    -20.267,
+    63.053
+   ],
+   [
+    20.399,
+    60.259
+   ],
+   [
+    20.789,
+    91.154
+   ],
+   [
+    -33.138,
+    189.869
+   ],
+   [
+    -43.731,
+    189.733
+   ]
+  ]
+ },
  "cotas": [
   {
    "id": "100-102 cerca",

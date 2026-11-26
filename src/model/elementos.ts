@@ -1,3 +1,5 @@
+import { contains as dentro, sobrepoe } from '../geo/polygon'
+
 /** Elementos que o usuário coloca no terreno. Medidas em metros, rotação em graus. */
 export type TipoElemento = 'galpao' | 'predio' | 'tanque' | 'muro' | 'caixa'
 
@@ -110,18 +112,10 @@ export function difAngulo(a: number, b: number) {
   return ((((b - a) % 360) + 540) % 360) - 180
 }
 
-const dentro =(poly: P[], [x, y]: P) => {
-  let d = false
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, yi] = poly[i], [xj, yj] = poly[j]
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) d = !d
-  }
-  return d
-}
-
 /**
- * Procura um lugar livre para um elemento novo: dentro do lote, fora do recuo e da mata,
- * sem encostar nos elementos já colocados (folga de 3 m), o mais perto possível de `perto`.
+ * Procura um lugar livre para um elemento novo: dentro do lote, sem tocar nas áreas proibidas
+ * (recuo, reserva, compensação), sem encostar nos elementos já colocados (folga de 3 m),
+ * o mais perto possível de `perto`.
  */
 export function lugarLivre(
   largura: number,
@@ -143,8 +137,9 @@ export function lugarLivre(
   for (const [x, y] of candidatos) {
     const pts: P[] = [[x - w, y - l], [x + w, y - l], [x + w, y + l], [x - w, y + l], [x, y - l], [x, y + l], [x - w, y], [x + w, y], [x, y]]
     if (!pts.every((p) => dentro(areas.lote, p))) continue
-    if (pts.some((p) => areas.proibidas.some((a) => dentro(a, p)))) continue
     if (caixas.some(([a, b, c, d]) => x + w > a && x - w < c && y + l > b && y - l < d)) continue
+    const caixa = pts.slice(0, 4)
+    if (areas.proibidas.some((a) => sobrepoe(caixa, a))) continue
     return [x, y]
   }
   return null

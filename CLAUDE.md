@@ -5,8 +5,15 @@ da Keuva e gerir a obra. Usuário final: Marlon, não programa; textos da interf
 
 - Coordenadas em metros: origem no vértice F (sudoeste), X = leste, Y = norte. No 3D: x = X,
   y = (cota - 770) * exagero, z = -Y.
-- `src/data/terreno.json`: divisas vetorizadas da foto aérea, recuo (5 m), mata (aproximada),
-  cotas lidas da foto. Não editar à mão sem conferir os testes de área/lados.
+- `src/data/terreno.json`: divisas vetorizadas da foto aérea, recuo (5 m), mata (aproximada, só
+  referência), cotas lidas da foto, e do laudo agronômico (ART 14725882): `reservaLegal` (0,4 ha),
+  `compensacao` (600 m²) e `supressao` (0,49 ha, vértices V01–V09). Não editar à mão sem conferir
+  os testes de área/lados.
+- Áreas protegidas (reserva + compensação, `areasProtegidas` em `terreno.ts`): não se constrói.
+  `src/model/protecao.ts` (`areaInvadida`, `areasDeObra` para o `lugarLivre`). `editarElemento`
+  recusa mudança que entra nelas e chama `avisar()` (recado em `AvisoTela`); em arrasto
+  (`registrar = false`) confere o caminho para o elemento parar na borda. Quem já estava dentro
+  pode sair.
 - Cotas são editáveis pelo usuário e ficam no store persistido `src/state/projeto.ts`
   (localStorage). Mudanças no formato precisam de `version` + `migrate` no persist para não
   perder dados de quem já usa o app.
@@ -15,8 +22,9 @@ da Keuva e gerir a obra. Usuário final: Marlon, não programa; textos da interf
   ao 3D e aos painéis. `rot` em graus anti-horário visto de cima = `rotation.y` no 3D.
   Edição: `editarElemento(id, dados, registrar)`; arrastos chamam `marcar()` uma vez no início
   e editam com `registrar = false`, para o `Cmd+Z` desfazer o arrasto inteiro.
-- Árvores da mata: `src/model/arvores.ts` (geradas sobre o polígono da mata, depois editáveis) em
-  `projeto.ts` (persist v3). Seleção múltipla só para árvores: `{ tipo: 'arvores', ids }`.
+- Árvores: `src/model/arvores.ts` (geradas só na reserva e na compensação, depois editáveis) em
+  `projeto.ts` (persist v4: a migração da v3 descarta as árvores fora das áreas protegidas).
+  Seleção múltipla só para árvores: `{ tipo: 'arvores', ids }`.
 - Edição direta estilo Shapr3D: alças nas faces (`esticar`, a face oposta fica parada), topo
   (`esticarAltura`) e anel de giro (`girar`), no 3D (`Elementos3D.tsx`, arrastos em `arrasto3d.ts`)
   e na planta (`Plan2D.tsx`). Passo 0,5 m / 5°, Shift = fino.

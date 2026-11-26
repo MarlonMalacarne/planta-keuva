@@ -78,7 +78,7 @@ describe('lugar livre', () => {
     const { lugarLivre, contorno } = await import('../model/elementos')
     const { terreno } = await import('../data/terreno')
     const { contains } = await import('../geo/polygon')
-    const areas = { lote: terreno.perimetro, proibidas: [terreno.recuo.poligono, terreno.mata.poligono] }
+    const { areasDeObra: areas } = await import('../model/protecao')
     const p = () => useProjeto.getState()
     useProjeto.setState({ elementos: [] })
     for (const [t, w, l] of [['galpao', 30, 50], ['predio', 15, 25], ['tanque', 8, 8]] as const) {
@@ -91,6 +91,66 @@ describe('lugar livre', () => {
     const sobrepoe = (a: typeof g, b: typeof g) => Math.abs(a.x - b.x) < (a.largura + b.largura) / 2 && Math.abs(a.y - b.y) < (a.comprimento + b.comprimento) / 2
     expect(sobrepoe(g, pr)).toBe(false)
     expect(sobrepoe(g, p().elementos[2])).toBe(false)
+  })
+
+  it('não usa a faixa estreita da compensação, mesmo pedindo bem em cima dela', async () => {
+    const { lugarLivre } = await import('../model/elementos')
+    const { areasDeObra, areaInvadida } = await import('../model/protecao')
+    const pos = lugarLivre(30, 50, [], areasDeObra, [25.5, 90])!
+    expect(pos).not.toBeNull()
+    const g = { id: 'g', tipo: 'galpao' as const, nome: '', x: pos[0], y: pos[1], rot: 0, largura: 30, comprimento: 50, altura: 10, cor: '' }
+    expect(areaInvadida(g)).toBeUndefined()
+  })
+})
+
+describe('áreas protegidas (reserva legal e compensação)', () => {
+  const p = () => useProjeto.getState()
+  beforeEach(() => useProjeto.setState({ elementos: [], historico: [], aviso: null }))
+
+  it('não deixa mover nem esticar um elemento para dentro', () => {
+    const id = p().adicionarElemento('galpao', 60, 45)
+    p().editarElemento(id, { x: 70, y: 95 })
+    expect(p().elementos[0]).toMatchObject({ x: 60, y: 45 })
+    expect(p().aviso?.texto).toMatch(/Reserva legal/)
+    // Esticar o comprimento até entrar na reserva (começa em y = 75,4) também é recusado.
+    p().editarElemento(id, { comprimento: 80 })
+    expect(p().elementos[0].comprimento).toBe(50)
+    // Mudanças que ficam fora continuam normais.
+    p().editarElemento(id, { x: 62, cor: '#fff' })
+    expect(p().elementos[0]).toMatchObject({ x: 62, cor: '#fff' })
+  })
+
+  it('num arrasto rápido o elemento para na borda, não pula para o outro lado', () => {
+    const id = p().adicionarElemento('caixa', 70, 60)
+    // Do sul da reserva direto para o norte dela (fora do lote, mas sem tocar na reserva no destino).
+    p().editarElemento(id, { y: 140 }, false)
+    expect(p().elementos[0].y).toBe(60)
+    // Digitando no painel o destino é que conta.
+    p().editarElemento(id, { y: 140 })
+    expect(p().elementos[0].y).toBe(140)
+  })
+
+  it('a faixa de compensação também bloqueia', () => {
+    const id = p().adicionarElemento('tanque', 10, 90)
+    p().editarElemento(id, { x: 24 })
+    expect(p().elementos[0].x).toBe(10)
+    expect(p().aviso?.texto).toMatch(/compensação/)
+  })
+
+  it('quem já estava dentro pode sair', () => {
+    const id = p().adicionarElemento('caixa', 70, 100)
+    p().editarElemento(id, { x: 72 })
+    expect(p().elementos[0].x).toBe(72)
+    p().editarElemento(id, { x: 60, y: 30 })
+    expect(p().elementos[0]).toMatchObject({ x: 60, y: 30 })
+  })
+
+  it('duplicar perto da reserva põe a cópia num lugar livre', async () => {
+    const { areaInvadida } = await import('../model/protecao')
+    const id = p().adicionarElemento('predio', 60, 60)
+    const copia = p().duplicarElemento(id)!
+    const e = p().elementos.find((x) => x.id === copia)!
+    expect(areaInvadida(e)).toBeUndefined()
   })
 })
 
@@ -132,11 +192,13 @@ describe('esticar e girar (alças)', () => {
 })
 
 describe('árvores', () => {
-  beforeEach(() => useProjeto.getState().restaurarMata())
+  beforeEach(() => useProjeto.getState().restaurarArvores())
 
-  it('a mata vira árvores editáveis', () => {
+  it('ficam só as árvores da reserva legal e da compensação', async () => {
+    const { protegida } = await import('../model/arvores')
     const { arvores } = useProjeto.getState()
     expect(arvores.length).toBeGreaterThan(100)
+    expect(arvores.every(protegida)).toBe(true)
     expect(new Set(arvores.map((a) => a.id)).size).toBe(arvores.length)
   })
 
@@ -166,9 +228,18 @@ describe('árvores', () => {
 
   it('quem já usava a versão 0.2.0 mantém cotas e elementos e ganha as árvores', async () => {
     const { migrarProjeto } = await import('./projeto')
-    const migrado = migrarProjeto({ cotas: [{ id: 'P1', x: 0, y: 0, z: 1 }], elementos: [{ id: 'E1' }] })
+    const migrado = migrarProjeto({ cotas: [{ id: 'P1', x: 0, y: 0, z: 1 }], elementos: [{ id: 'E1' }] }, 2)
     expect(migrado.cotas).toHaveLength(1)
     expect(migrado.elementos).toHaveLength(1)
     expect(migrado.arvores.length).toBeGreaterThan(100)
+  })
+
+  it('a mata inteira da versão anterior fica só com as árvores protegidas', async () => {
+    const { migrarProjeto } = await import('./projeto')
+    const na = (id: string, x: number, y: number) => ({ id, x, y, altura: 9, copa: 6 })
+    const arvores = [na('T1', 70, 100), na('T2', 25, 90), na('T3', -20, 120), na('T4', 0, 160)]
+    expect(migrarProjeto({ arvores }, 3).arvores.map((a) => a.id)).toEqual(['T1', 'T2'])
+    // Da versão 4 em diante, as árvores salvas ficam como estão (inclusive as de paisagismo).
+    expect(migrarProjeto({ arvores }, 4).arvores).toHaveLength(4)
   })
 })

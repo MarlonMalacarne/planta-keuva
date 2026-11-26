@@ -5,6 +5,7 @@ import PainelProjeto from './ui/PainelProjeto'
 import Inspetor from './ui/Inspetor'
 import BarraStatus from './ui/BarraStatus'
 import AvisoAtualizacao from './ui/AvisoAtualizacao'
+import AvisoTela from './ui/AvisoTela'
 import { useEstado, type Vista } from './state/store'
 import { useProjeto } from './state/projeto'
 
@@ -85,6 +86,7 @@ export default function App() {
       <PainelProjeto />
       <Inspetor />
       <AvisoAtualizacao />
+      <AvisoTela />
       <BarraStatus />
     </div>
   )

@@ -6,7 +6,7 @@ import { iconeElemento } from './icones'
 
 export default function PainelProjeto() {
   const { camadas, alternar, exagero, setExagero, intervaloCurvas, setIntervalo } = useEstado()
-  const { elementos, selecao, selecionar, cotas, arvores, restaurarMata } = useProjeto()
+  const { elementos, selecao, selecionar, cotas, arvores, restaurarArvores } = useProjeto()
   const todasArvores = selecao?.tipo === 'arvores' && selecao.ids.length === arvores.length && arvores.length > 0
   const [ajustes, setAjustes] = useState(false)
 
@@ -32,8 +32,8 @@ export default function PainelProjeto() {
             <TreeDeciduous size={15} /> Árvores <small>{arvores.length.toLocaleString('pt-BR')}</small>
           </button>
         ) : (
-          <button className="item recuado apagado" onClick={restaurarMata}>
-            <TreeDeciduous size={15} /> Repor a mata original
+          <button className="item recuado apagado" onClick={restaurarArvores}>
+            <TreeDeciduous size={15} /> Repor as árvores protegidas
           </button>
         )}
       </section>

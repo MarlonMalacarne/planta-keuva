@@ -4,8 +4,9 @@ import { useMemo } from 'react'
 import { terreno, extensao } from '../data/terreno'
 import type { Vec2 } from '../geo/polygon'
 import { ElevationModel, type Cota } from '../geo/elevation'
-import { catalogo, type Elemento, type TipoElemento } from '../model/elementos'
-import { arvoresDaMata, proximoIdArvore, type Arvore } from '../model/arvores'
+import { catalogo, difAngulo, lugarLivre, type Elemento, type TipoElemento } from '../model/elementos'
+import { arvoresProtegidas, protegida, proximoIdArvore, type Arvore } from '../model/arvores'
+import { areaInvadida, areasDeObra } from '../model/protecao'
 
 export type { Cota, Elemento, Arvore }
 
@@ -22,6 +23,9 @@ interface Foto {
 interface Projeto extends Foto {
   historico: Foto[]
   selecao: Selecao
+  /** Recado rápido na tela (quando uma mudança é recusada, por exemplo). `n` muda a cada aviso. */
+  aviso: { texto: string; n: number } | null
+  avisar: (texto: string) => void
   selecionar: (s: Selecao) => void
   /** Guarda o estado atual no histórico (antes de arrastar algo, por exemplo). */
   marcar: () => void
@@ -41,7 +45,8 @@ interface Projeto extends Foto {
   /** Muda várias árvores de uma vez (mover um grupo, trocar a altura de todas...). */
   editarArvores: (mudancas: Record<string, Partial<Omit<Arvore, 'id'>>>, registrar?: boolean) => void
   removerArvores: (ids: string[]) => void
-  restaurarMata: () => void
+  /** Repõe as árvores da reserva legal e da compensação. */
+  restaurarArvores: () => void
 }
 
 const LIMITE_HISTORICO = 100
@@ -72,9 +77,11 @@ export const useProjeto = create<Projeto>()(
       return {
         cotas: cotasDaFoto,
         elementos: [],
-        arvores: arvoresDaMata(),
+        arvores: arvoresProtegidas(),
         historico: [],
         selecao: null,
+        aviso: null,
+        avisar: (texto) => set({ aviso: { texto, n: (get().aviso?.n ?? 0) + 1 } }),
         selecionar: (selecao) => set({ selecao }),
         marcar: () => set({ historico: [...get().historico, foto()].slice(-LIMITE_HISTORICO) }),
         desfazer: () => {
@@ -110,23 +117,37 @@ export const useProjeto = create<Projeto>()(
           return id
         },
         editarElemento: (id, dados, registrar = true) => {
-          const elementos = get().elementos.map((e) => {
-            if (e.id !== id) return e
-            const n = { ...e, ...dados }
-            if (n.tipo === 'tanque') {
-              // Tanque é redondo: largura e comprimento são o mesmo diâmetro.
-              const d = dados.comprimento !== undefined && dados.largura === undefined ? n.comprimento : n.largura
-              n.largura = n.comprimento = d
-            }
-            return n
-          })
+          const antes = get().elementos.find((e) => e.id === id)
+          if (!antes) return
+          const n = { ...antes, ...dados }
+          if (n.tipo === 'tanque') {
+            // Tanque é redondo: largura e comprimento são o mesmo diâmetro.
+            const d = dados.comprimento !== undefined && dados.largura === undefined ? n.comprimento : n.largura
+            n.largura = n.comprimento = d
+          }
+          // Não deixa entrar na reserva legal nem na compensação (quem já está dentro pode sair).
+          // Num arrasto (registrar = false) o caminho também conta: o elemento para na borda em vez
+          // de pular para o outro lado quando o mouse anda rápido.
+          if (!areaInvadida(antes)) {
+            const invadida = registrar ? areaInvadida(n) : invadeNoCaminho(antes, n)
+            if (invadida) return get().avisar(`${invadida.nome}: área protegida, não dá para construir aí`)
+          }
+          const elementos = get().elementos.map((e) => (e.id === id ? n : e))
           set(registrar ? comHistorico({ elementos }) : { elementos })
         },
         duplicarElemento: (id) => {
           const e = get().elementos.find((x) => x.id === id)
           if (!e) return null
           const novoId = proximoId('E', get().elementos)
-          const copia = { ...e, id: novoId, nome: proximoNome(catalogo[e.tipo].nome, get().elementos), x: e.x + 5, y: e.y - 5 }
+          let copia = { ...e, id: novoId, nome: proximoNome(catalogo[e.tipo].nome, get().elementos), x: e.x + 5, y: e.y - 5 }
+          if (areaInvadida(copia)) {
+            const lugar = lugarLivre(e.largura, e.comprimento, get().elementos, areasDeObra, [copia.x, copia.y])
+            if (!lugar) {
+              get().avisar('Não achei lugar livre para a cópia fora das áreas protegidas')
+              return null
+            }
+            copia = { ...copia, x: lugar[0], y: lugar[1], rot: 0 }
+          }
           set({ ...comHistorico({ elementos: [...get().elementos, copia] }), selecao: { tipo: 'elemento', id: novoId } })
           return novoId
         },
@@ -145,22 +166,39 @@ export const useProjeto = create<Projeto>()(
           const fora = new Set(ids)
           set({ ...comHistorico({ arvores: get().arvores.filter((a) => !fora.has(a.id)) }), selecao: null })
         },
-        restaurarMata: () => set({ ...comHistorico({ arvores: arvoresDaMata() }), selecao: null }),
+        restaurarArvores: () => set({ ...comHistorico({ arvores: arvoresProtegidas() }), selecao: null }),
       }
     },
     {
       name: 'planta-keuva:projeto',
-      version: 3,
+      version: 4,
       partialize: ({ cotas, elementos, arvores }) => ({ cotas, elementos, arvores }),
       migrate: migrarProjeto,
     },
   ),
 )
 
-/** v1 (0.1.0) só tinha cotas; v2 (0.2.0) não tinha as árvores como objetos. */
-export function migrarProjeto(salvo: unknown): Foto {
+/**
+ * v1 (0.1.0) só tinha cotas; v2 (0.2.0) não tinha as árvores como objetos; v3 tinha a mata
+ * inteira. A partir da v4 ficam só as árvores da reserva legal e da compensação ambiental.
+ */
+export function migrarProjeto(salvo: unknown, versao = 0): Foto {
   const s = (salvo ?? {}) as Partial<Foto>
-  return { cotas: s.cotas ?? cotasDaFoto, elementos: s.elementos ?? [], arvores: s.arvores ?? arvoresDaMata() }
+  const arvores = !s.arvores ? arvoresProtegidas() : versao < 4 ? s.arvores.filter(protegida) : s.arvores
+  return { cotas: s.cotas ?? cotasDaFoto, elementos: s.elementos ?? [], arvores }
+}
+
+/** Primeira área protegida tocada indo de `a` até `b` em passos de até 1 m (ou 2°). */
+function invadeNoCaminho(a: Elemento, b: Elemento) {
+  const giro = difAngulo(a.rot, b.rot)
+  const passos = Math.ceil(Math.max(Math.hypot(b.x - a.x, b.y - a.y), Math.abs(b.largura - a.largura), Math.abs(b.comprimento - a.comprimento), Math.abs(giro) / 2))
+  for (let k = 1; k <= passos; k++) {
+    const t = k / passos
+    const m = (u: number, v: number) => u + (v - u) * t
+    const invadida = areaInvadida({ ...b, x: m(a.x, b.x), y: m(a.y, b.y), largura: m(a.largura, b.largura), comprimento: m(a.comprimento, b.comprimento), rot: a.rot + giro * t })
+    if (invadida) return invadida
+  }
+  return areaInvadida(b)
 }
 
 /** Mantém só a parte da seleção que ainda existe (depois de desfazer, por exemplo). */

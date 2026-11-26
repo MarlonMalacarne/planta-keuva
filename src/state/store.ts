@@ -16,7 +16,7 @@ export const nomesCamadas: Record<keyof Camadas, string> = {
   foto: 'Foto aérea',
   divisas: 'Divisas e medidas',
   recuo: 'Recuo de 5 m',
-  mata: 'Mata',
+  mata: 'Reserva e árvores',
   relevo: 'Relevo e cotas',
 }
 

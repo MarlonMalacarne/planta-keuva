@@ -2,12 +2,14 @@ import { useEffect, useMemo } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { Line, OrbitControls, Sky } from '@react-three/drei'
 import * as THREE from 'three'
-import { terreno, extensao } from '../data/terreno'
-import { centroid, type Vec2 } from '../geo/polygon'
+import { areasProtegidas, terreno, extensao } from '../data/terreno'
+import { centroid, dist, type Vec2 } from '../geo/polygon'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
 import Elementos3D from './Elementos3D'
 import Arvores3D from './Arvores3D'
+import Etiqueta3D from './Etiqueta3D'
+import { areaInvadida, pegada } from '../model/protecao'
 
 /** Cota de referência: o 3D trabalha com alturas relativas a ela. */
 export const COTA_BASE = 770
@@ -124,17 +126,26 @@ function LinhaNoChao({ pts, cor, largura = 3, fechada = false, tracejada = false
   return <Line points={pontos} color={cor} lineWidth={largura} dashed={tracejada} dashSize={2} gapSize={1.2} />
 }
 
-/** Superfície translúcida que acompanha o relevo (para o recuo). */
+/** Superfície translúcida que acompanha o relevo (recuo, reserva...). */
 function AreaNoChao({ pts, cor, opacidade }: { pts: Vec2[]; cor: string; opacidade: number }) {
   const h = useAltura()
   const geo = useMemo(() => {
     const contorno = pts.map(([x, y]) => new THREE.Vector2(x, y))
-    const tri = THREE.ShapeUtils.triangulateShape(contorno, [])
-    const pos = new Float32Array(pts.length * 3)
-    pts.forEach(([x, y], i) => pos.set([x, h(x, y) + 0.12, -y], i * 3))
+    // Triângulos grandes ficariam retos e sumiriam sob o relevo: divide até lados de ~3 m.
+    const pilha = THREE.ShapeUtils.triangulateShape(contorno, []).map((t) => t.map((i) => pts[i]) as [Vec2, Vec2, Vec2])
+    const meio = (a: Vec2, b: Vec2): Vec2 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+    const pos: number[] = []
+    while (pilha.length) {
+      const [a, b, c] = pilha.pop()!
+      if (Math.max(dist(a, b), dist(b, c), dist(c, a)) > 3) {
+        const ab = meio(a, b), bc = meio(b, c), ca = meio(c, a)
+        pilha.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca])
+        continue
+      }
+      for (const [x, y] of [a, b, c]) pos.push(x, h(x, y) + 0.12, -y)
+    }
     const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    g.setIndex(tri.flat())
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
     return g
   }, [pts, h])
   useEffect(() => () => geo.dispose(), [geo])
@@ -248,6 +259,38 @@ function ArvoresNoTerreno() {
   return <Arvores3D h={useAltura()} />
 }
 
+/** Reserva legal e compensação (verde, não se constrói) e a supressão autorizada (tracejada). */
+function AreasProtegidas() {
+  const h = useAltura()
+  return (
+    <group>
+      <LinhaNoChao pts={terreno.supressao.poligono} cor="#f0b070" largura={2} fechada tracejada />
+      {areasProtegidas.map((a) => {
+        const [x, y] = centroid(a.poligono)
+        return (
+          <group key={a.id}>
+            <AreaNoChao pts={a.poligono} cor="#2fbf6a" opacidade={0.3} />
+            <LinhaNoChao pts={a.poligono} cor="#3fd27a" largura={3} fechada />
+            <Etiqueta3D texto={`${a.curto} · não construir`} posicao={[x, h(x, y) + 22, -y]} fundo="rgba(22, 92, 52, 0.85)" altura={0.026} />
+          </group>
+        )
+      })}
+    </group>
+  )
+}
+
+/** Contorno vermelho em volta de elemento que ficou dentro de área protegida. */
+function Invasoes() {
+  const elementos = useProjeto((p) => p.elementos)
+  return (
+    <group>
+      {elementos.filter((e) => areaInvadida(e)).map((e) => (
+        <LinhaNoChao key={e.id} pts={pegada({ ...e, largura: e.largura + 1.5, comprimento: e.comprimento + 1.5 })} cor="#ff5a5f" largura={4} fechada />
+      ))}
+    </group>
+  )
+}
+
 export default function Scene3D() {
   const camadas = useEstado((e) => e.camadas)
   const ferramenta = useEstado((e) => e.ferramenta)
@@ -277,7 +320,9 @@ export default function Scene3D() {
         {camadas.divisas && <LinhaNoChao pts={terreno.perimetro} cor="#ff5a5f" largura={3} fechada />}
         {camadas.divisas && <Marcos />}
         {camadas.recuo && <AreaNoChao pts={terreno.recuo.poligono} cor="#ffb020" opacidade={0.35} />}
+        {camadas.mata && <AreasProtegidas />}
         {camadas.mata && <ArvoresNoTerreno />}
+        <Invasoes />
         {(camadas.relevo || ferramenta === 'cota') && <Cotas />}
         <ElementosNoTerreno />
         <OrbitControls makeDefault target={[centro[0], 5, -centro[1]]} maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={1200} enableDamping />

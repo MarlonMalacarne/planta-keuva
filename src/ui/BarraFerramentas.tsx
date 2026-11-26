@@ -3,7 +3,7 @@ import { Crosshair, MousePointer2, Plus, TreeDeciduous, Undo2 } from 'lucide-rea
 import { useEstado, type Ferramenta } from '../state/store'
 import { PONTO_INICIAL, useProjeto } from '../state/projeto'
 import { catalogo, lugarLivre, type TipoElemento } from '../model/elementos'
-import { terreno } from '../data/terreno'
+import { areasDeObra } from '../model/protecao'
 import { iconeElemento } from './icones'
 
 const ferramentas: { id: Ferramenta; nome: string; tecla: string; Icone: typeof MousePointer2 }[] = [
@@ -25,18 +25,16 @@ export default function BarraFerramentas() {
   }, [menu])
 
   const adicionar = (tipo: TipoElemento) => {
-    // Coloca o elemento num lugar livre da área construível, perto do centro da parte aberta.
+    // Coloca o elemento num lugar livre (fora do recuo e das áreas protegidas), perto do centro da parte aberta.
     const m = catalogo[tipo]
-    const areas = { lote: terreno.perimetro, proibidas: [terreno.recuo.poligono, terreno.mata.poligono] }
-    const [x, y] = lugarLivre(m.largura, m.comprimento, elementos, areas, PONTO_INICIAL) ?? PONTO_INICIAL
+    const [x, y] = lugarLivre(m.largura, m.comprimento, elementos, areasDeObra, PONTO_INICIAL) ?? PONTO_INICIAL
     adicionarElemento(tipo, x, y)
     setFerramenta('selecionar')
     setMenu(false)
   }
 
   const novaArvore = () => {
-    const areas = { lote: terreno.perimetro, proibidas: [terreno.recuo.poligono, terreno.mata.poligono] }
-    const [x, y] = lugarLivre(6, 6, elementos, areas, PONTO_INICIAL) ?? PONTO_INICIAL
+    const [x, y] = lugarLivre(6, 6, elementos, areasDeObra, PONTO_INICIAL) ?? PONTO_INICIAL
     adicionarArvore(x, y)
     setFerramenta('selecionar')
     setMenu(false)
@@ -82,7 +80,7 @@ export default function BarraFerramentas() {
             </span>
             <span>
               <b>Árvore</b>
-              <small>Para paisagismo ou para repor a mata</small>
+              <small>Para paisagismo ou para repor a vegetação</small>
             </span>
           </button>
         </div>

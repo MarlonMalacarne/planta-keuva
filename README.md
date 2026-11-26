@@ -8,19 +8,22 @@ e (nos próximos passos) terraplanagem, modelagem, importação de modelos e ges
 - **Terreno em escala real**: as divisas foram vetorizadas da foto aérea do levantamento.
   Os lados conferem com as medidas com erro menor que 10 cm, e a área calculada é 20.192 m²
   (foto: 20.200 m²).
-- **Restrições**: faixa de recuo de 5 m junto à rodovia (cerca de 980 m²) e a área de mata (aproximada).
+- **Restrições**: faixa de recuo de 5 m junto à rodovia (cerca de 980 m²), reserva legal (0,4 ha) e
+  área de compensação ambiental (600 m²) do laudo agronômico. Na reserva e na compensação o app não
+  deixa construir: o elemento para na borda e aparece um aviso. A área de supressão autorizada dos
+  ligustros (0,49 ha) aparece tracejada.
 - **Relevo**: curvas de nível e 3D a partir dos pontos de cota, com exagero vertical ajustável.
 - **Cotas à mão**: escolha a ferramenta de cota (ícone de mira ou tecla `C`), clique no terreno
   onde mediu e digite o nível no painel. O relevo, as curvas e o 3D mudam na hora. Na planta 2D,
   arraste um ponto para movê-lo. Tudo fica salvo no seu Mac.
 - **Elementos da obra**: em **Adicionar**, coloque galpão, prédio, tanque/silo, muro ou bloco.
-  O app escolhe um lugar livre dentro do lote, fora do recuo e da mata.
+  O app escolhe um lugar livre dentro do lote, fora do recuo e das áreas protegidas.
 - **Selecionar e editar**: clique num elemento (no 3D, na planta ou na lista à esquerda).
   Arraste o elemento para mover, puxe as setas azuis para esticar uma face (a face oposta fica
   parada), a seta de cima para a altura e o anel para girar. Shift deixa os passos finos. Também
   dá para digitar posição, giro e medidas exatas no painel da direita. `Cmd+D` duplica,
   `Delete` apaga, `Cmd+Z` desfaz.
-- **Árvores**: cada árvore da mata é um objeto. Clique para selecionar, Shift + clique para somar,
+- **Árvores**: ficam só as da reserva legal e da compensação; cada uma é um objeto. Clique para selecionar, Shift + clique para somar,
   Shift + arraste na planta para pegar uma área. Arraste para mover, `Delete` apaga.
 - **Atualização automática**: ao abrir, o app procura versão nova e se instala com um clique.
 

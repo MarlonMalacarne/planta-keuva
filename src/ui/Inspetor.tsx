@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Copy, Crosshair, Trash2, TreeDeciduous } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Crosshair, ShieldAlert, Trash2, TreeDeciduous } from 'lucide-react'
 import { calcularResumo, terreno, fmt } from '../data/terreno'
 import { useElevacao, useProjeto, type Arvore, type Cota, type Elemento } from '../state/projeto'
 import { areaProjecao, catalogo, coresSugeridas, volume } from '../model/elementos'
+import { areaDoPonto, areaInvadida } from '../model/protecao'
 import { CampoNumero } from './Campos'
 import { iconeElemento } from './icones'
 
@@ -23,6 +24,7 @@ function InspetorElemento({ e }: { e: Elemento }) {
   const { editarElemento, duplicarElemento, removerElemento } = useProjeto()
   const ed = (d: Partial<Elemento>) => editarElemento(e.id, d)
   const I = iconeElemento[e.tipo]
+  const invadida = areaInvadida(e)
   return (
     <div className="inspetor">
       <div className="titulo-inspetor">
@@ -32,6 +34,11 @@ function InspetorElemento({ e }: { e: Elemento }) {
         <input className="nome" value={e.nome} onChange={(ev) => editarElemento(e.id, { nome: ev.target.value }, false)} aria-label="Nome" />
       </div>
       <p className="tipo">{catalogo[e.tipo].nome}</p>
+      {invadida && (
+        <p className="alerta">
+          <ShieldAlert size={15} /> Está dentro da {invadida.nome.toLowerCase()}, onde não pode construir. Arraste para fora.
+        </p>
+      )}
 
       <h4>Posição</h4>
       <div className="grade-3">
@@ -101,7 +108,7 @@ function InspetorArvores({ lista }: { lista: Arvore[] }) {
         </span>
         <b className="nome">{varias ? `${lista.length.toLocaleString('pt-BR')} árvores` : `Árvore ${a.id}`}</b>
       </div>
-      <p className="tipo">{varias ? 'Mudanças valem para todas as selecionadas' : 'Da mata do terreno'}</p>
+      <p className="tipo">{varias ? 'Mudanças valem para todas as selecionadas' : (areaDoPonto([a.x, a.y])?.nome ?? 'Fora das áreas protegidas')}</p>
       {!varias && (
         <>
           <h4>Posição</h4>
@@ -156,7 +163,7 @@ function InspetorCota({ c }: { c: Cota }) {
 
 function ResumoTerreno() {
   const elevacao = useElevacao()
-  const { cotas, restaurarCotasDaFoto } = useProjeto()
+  const { cotas, arvores, restaurarCotasDaFoto } = useProjeto()
   const r = useMemo(() => calcularResumo(elevacao), [elevacao])
   const [lados, setLados] = useState(false)
   const manuais = cotas.filter((c) => c.origem === 'manual').length
@@ -175,13 +182,21 @@ function ResumoTerreno() {
           <span>Livre para construir</span>
           <b>{fmt.m2(r.areaLivre)}</b>
         </div>
+        <div className="cartao protegido">
+          <span>Reserva legal</span>
+          <b>{fmt.m2(r.areaReserva)}</b>
+        </div>
+        <div className="cartao protegido">
+          <span>Compensação</span>
+          <b>{fmt.m2(r.areaCompensacao)}</b>
+        </div>
         <div className="cartao">
           <span>Recuo (5 m)</span>
           <b>{fmt.m2(r.areaRecuo)}</b>
         </div>
         <div className="cartao">
-          <span>Mata</span>
-          <b>{fmt.m2(r.areaMata)}</b>
+          <span>Árvores</span>
+          <b>{arvores.length.toLocaleString('pt-BR')}</b>
         </div>
         <div className="cartao">
           <span>Desnível</span>
@@ -212,7 +227,8 @@ function ResumoTerreno() {
         </table>
       )}
       <p className="dica">
-        Divisas tiradas da foto do levantamento (erro menor que 10 cm). A área livre desconta o recuo e a mata, que é aproximada.
+        Divisas tiradas da foto do levantamento (erro menor que 10 cm). Reserva legal e compensação vêm do laudo agronômico: nelas não se constrói. A
+        supressão de ligustros está autorizada só na área tracejada (0,49 ha).
         {manuais > 0 && (
           <>
             {' '}
