@@ -63,6 +63,14 @@ describe('proposta da vinícola', () => {
     }
   })
 
+  it('cada tanque fica inteiro em cima de uma base de concreto', () => {
+    const bases = proposta.pisos.filter((p) => p.material === 'concreto')
+    for (const t of elementos.filter((e) => e.tipo === 'tanque')) {
+      const borda = Array.from({ length: 12 }, (_, i) => [t.x + (t.largura / 2 + 0.3) * Math.cos((i * Math.PI) / 6), t.y + (t.largura / 2 + 0.3) * Math.sin((i * Math.PI) / 6)] as Vec2)
+      expect(bases.some((b) => borda.every((q) => contains(b.pontos, q))), t.nome).toBe(true)
+    }
+  })
+
   it('as carretas entram e saem pelo portão, vindo da estrada de terra', () => {
     const portao = elementos.find((e) => e.tipo === 'portao')!
     for (const f of proposta.fluxos) {

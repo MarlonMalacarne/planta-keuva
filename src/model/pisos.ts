@@ -15,7 +15,7 @@ export const materiais: Record<MaterialPiso, { nome: string; cor: string; descri
   asfalto: { nome: 'Asfalto', cor: '#3b3e44', descricao: 'Vias e estacionamento' },
   cascalho: { nome: 'Cascalho', cor: '#a79d8b', descricao: 'Brita ou saibro' },
   concreto: { nome: 'Concreto', cor: '#c6c3bb', descricao: 'Pátio e calçadas' },
-  bloquete: { nome: 'Bloquete', cor: '#a3705a', descricao: 'Paver intertravado' },
+  bloquete: { nome: 'Bloquete', cor: '#9b958b', descricao: 'Paver intertravado' },
   grama: { nome: 'Grama', cor: '#5e9a47', descricao: 'Jardim e taludes' },
   terra: { nome: 'Terra', cor: '#8b6a49', descricao: 'Chão batido' },
 }

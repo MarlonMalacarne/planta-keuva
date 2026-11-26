@@ -262,7 +262,8 @@ h4 { font-size: 11px; font-weight: 600; color: var(--texto-3); margin: 18px 0 8p
 
 /* ---------- 3D ---------- */
 .scene3d { position: absolute; inset: 0; }
-.scene3d-sobre { position: absolute; right: 316px; bottom: 16px; }
+.scene3d-sobre { position: absolute; right: 316px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.scene3d-sobre .alternador { margin: 0; padding: 4px; border-radius: 999px; }
 .scene3d-sobre .botao-flutuante { display: inline-flex; align-items: center; gap: 7px; color: var(--texto); }
 .scene3d.caminhando canvas { cursor: grab; }
 .scene3d.caminhando canvas:active { cursor: grabbing; }

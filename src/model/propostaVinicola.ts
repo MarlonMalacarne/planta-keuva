@@ -99,28 +99,61 @@ function grade(origem: P, rot: number, passo: number, ni: number, nj: number, ok
   return out
 }
 
-/** Contorno em degraus em volta de tanques numa grade girada `rot` (uma coluna por degrau). */
-function escada(centros: P[], rot: number, passo: number, folga: number): P[] {
+/** Simplifica uma linha (Douglas-Peucker): tira pontos a menos de `tol` metros da reta. */
+function simplificar(pts: P[], tol: number): P[] {
+  if (pts.length < 3) return pts
+  const [a, b] = [pts[0], pts[pts.length - 1]]
+  const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy) || 1
+  let pior = 0, iPior = 0
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = Math.abs((pts[i][0] - a[0]) * dy - (pts[i][1] - a[1]) * dx) / n
+    if (d > pior) [pior, iPior] = [d, i]
+  }
+  if (pior <= tol) return [a, b]
+  return [...simplificar(pts.slice(0, iPior + 1), tol).slice(0, -1), ...simplificar(pts.slice(iPior), tol)]
+}
+
+/**
+ * Contorno limpo de uma área livre, numa grade girada `rot`: varre faixas (de q0 a q1, ao longo
+ * de ey) e, em cada uma, pega o maior trecho em ex (de s0 a s1) que passa em `ok`. As bordas
+ * acompanham a via, o recuo e os retornos; sai um polígono com lados retos, sem degraus.
+ */
+function contornoDaArea(rot: number, [s0, s1]: [number, number], [q0, q1]: [number, number], ok: (p: P) => boolean): P[] {
   const a = (rot * Math.PI) / 180
   const ex: P = [Math.cos(a), Math.sin(a)], ey: P = [-Math.sin(a), Math.cos(a)]
-  const colunas = new Map<number, [number, number]>()
-  for (const c of centros) {
-    const s = Math.round((c[0] * ex[0] + c[1] * ex[1]) * 10) / 10
-    const q = c[0] * ey[0] + c[1] * ey[1]
-    const atual = colunas.get(s) ?? [Infinity, -Infinity]
-    colunas.set(s, [Math.min(atual[0], q), Math.max(atual[1], q)])
+  const no = (s: number, q: number): P => [s * ex[0] + q * ey[0], s * ex[1] + q * ey[1]]
+  const dir: P[] = [], esq: P[] = []
+  const faixas = Math.max(2, Math.ceil((q1 - q0) / 0.5))
+  for (let k = 0; k <= faixas; k++) {
+    const q = q0 + ((q1 - q0) * k) / faixas
+    let melhor: [number, number] | null = null, inicio: number | null = null
+    for (let s = s0; s <= s1 + 1e-9; s += 0.1) {
+      const dentro = ok(no(s, q))
+      if (dentro && inicio === null) inicio = s
+      if ((!dentro || s + 0.1 > s1 + 1e-9) && inicio !== null) {
+        const fim = dentro ? s : s - 0.1
+        if (!melhor || fim - inicio > melhor[1] - melhor[0]) melhor = [inicio, fim]
+        inicio = null
+      }
+    }
+    if (melhor && melhor[1] - melhor[0] > 0.5) {
+      dir.push(no(melhor[1], q))
+      esq.push(no(melhor[0], q))
+    }
   }
-  const ss = [...colunas.keys()].sort((x, y) => x - y)
-  const meio = passo / 2
-  const baixo: P[] = [], alto: P[] = []
-  ss.forEach((s, i) => {
-    const [q0, q1] = colunas.get(s)!
-    const esq = i === 0 ? s - folga : s - meio, dir = i === ss.length - 1 ? s + folga : s + meio
-    baixo.push([esq, q0 - folga], [dir, q0 - folga])
-    alto.push([esq, q1 + folga], [dir, q1 + folga])
-  })
-  return [...baixo, ...alto.reverse()].map(([s, q]) => [s * ex[0] + q * ey[0], s * ex[1] + q * ey[1]] as P)
+  return [...simplificar(dir, 0.2), ...simplificar(esq.reverse(), 0.2)]
 }
+
+/** Extensão de pontos numa grade girada `rot`: [s mín, s máx] e [q mín, q máx]. */
+function extensaoNaGrade(pts: P[], rot: number) {
+  const a = (rot * Math.PI) / 180
+  const ss = pts.map(([x, y]) => x * Math.cos(a) + y * Math.sin(a))
+  const qs = pts.map(([x, y]) => -x * Math.sin(a) + y * Math.cos(a))
+  return { s: [Math.min(...ss), Math.max(...ss)] as [number, number], q: [Math.min(...qs), Math.max(...qs)] as [number, number] }
+}
+
+/** Livre com folga: o ponto e um anel de `r` metros em volta. */
+const livreComFolga = (p: P, r: number) => livre(p) && [0, 1, 2, 3, 4, 5, 6, 7].every((i) => livre([p[0] + r * Math.cos((i * Math.PI) / 4), p[1] + r * Math.sin((i * Math.PI) / 4)]))
 
 /** Linha do recuo deslocada `d` metros para dentro do lote (do norte para o sul). */
 function recuoParaDentro(d: number): P[] {
@@ -193,10 +226,19 @@ export function propostaVinicola(): Proposta {
     [COMP_SO[0] - 1, COMP_SO[1] - 1.4], ladoLeste(V07[1] - 0.25, 1), ladoLeste(arcoNorte[0][1] - 2, 1),
     ...arcoNorte, ...recuo, F(3.2, 36), F(72.5, 36),
   ])
-  const base = (nome: string, centros: P[], rot: number, passo: number, folga: number) => centros.length && piso(nome, 'concreto', escada(centros, rot, passo, folga))
-  base('Tanques grandes', grandes.filter((p) => p[1] < RETORNO_N[1]), ROT_FAIXA, TG.passo, r + 0.5)
-  base('Tanques grandes do retorno', grandes.filter((p) => p[1] >= RETORNO_N[1]), ROT_FAIXA, TG.passo, r + 0.5)
-  base('Tanques pequenos', pequenos.slice(0, 100), ROT_FRENTE, TP.passo, TP.diametro / 2 + 0.5)
+  // Bases de concreto: ocupam a área livre em volta de cada grupo de tanques, com lados retos
+  // que acompanham a via, o recuo, a mata e os retornos (nada de degraus).
+  const longeDosGiros = (p: P) => Math.hypot(p[0] - ROTATORIA[0], p[1] - ROTATORIA[1]) >= 14.5 && Math.hypot(p[0] - RETORNO_N[0], p[1] - RETORNO_N[1]) >= R_RETORNO + 0.5
+  const base = (nome: string, centros: P[], rot: number, raio: number, ok: (p: P) => boolean, presoAosTanques: boolean) => {
+    if (!centros.length) return
+    const ext = extensaoNaGrade(centros, rot)
+    const m = raio + 0.75
+    const faixaS: [number, number] = presoAosTanques ? [ext.s[0] - m, ext.s[1] + m] : [ext.s[0] - 40, ext.s[1] + 40]
+    piso(nome, 'concreto', contornoDaArea(rot, faixaS, [ext.q[0] - m, ext.q[1] + m], ok))
+  }
+  base('Tanques grandes', grandes.filter((p) => p[1] < RETORNO_N[1]), ROT_FAIXA, r, (p) => livreComFolga(p, 0.75) && dLeste(p) >= 8 && longeDosGiros(p), false)
+  base('Tanques grandes do retorno', grandes.filter((p) => p[1] >= RETORNO_N[1]), ROT_FAIXA, r, (p) => livreComFolga(p, 0.75) && longeDosGiros(p), true)
+  base('Tanques pequenos', pequenos.slice(0, 100), ROT_FRENTE, TP.diametro / 2, (p) => livreComFolga(p, 0.6) && vDe(p) >= 5, true)
   piso('Carga de vinho a granel', 'concreto', [ladoLeste(96, 4.6), ladoLeste(112, 4.6), ladoLeste(112, 8.2), ladoLeste(96, 8.2)])
   piso('Recebimento de uva', 'concreto', retF(13, 36, 31, 40))
   piso('Docas de expedição', 'concreto', retF(46, 36, 70, 40))

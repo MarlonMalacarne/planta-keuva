@@ -35,6 +35,8 @@ interface Estado {
   rascunho: Vec2[]
   /** Andando pelo terreno em primeira pessoa (só no 3D). */
   caminhando: boolean
+  /** 3D realista (sem as marcações técnicas: recuo, áreas, marcos) ou técnico. */
+  realista: boolean
   cursor: { x: number; y: number; z: number } | null
   setVista: (v: Vista) => void
   alternar: (c: keyof Camadas) => void
@@ -44,6 +46,7 @@ interface Estado {
   setMaterialPiso: (m: MaterialPiso) => void
   setRascunho: (r: Vec2[]) => void
   setCaminhando: (c: boolean) => void
+  setRealista: (r: boolean) => void
   setCursor: (c: Estado['cursor']) => void
 }
 
@@ -59,6 +62,7 @@ export const useEstado = create<Estado>()(
       materialPiso: 'asfalto',
       rascunho: [],
       caminhando: false,
+      realista: true,
       cursor: null,
       setVista: (vista) => set({ vista }),
       alternar: (c) => set((s) => ({ camadas: { ...s.camadas, [c]: !s.camadas[c] } })),
@@ -68,12 +72,14 @@ export const useEstado = create<Estado>()(
       setMaterialPiso: (materialPiso) => set({ materialPiso }),
       setRascunho: (rascunho) => set({ rascunho }),
       setCaminhando: (caminhando) => set({ caminhando }),
+      setRealista: (realista) => set({ realista }),
       setCursor: (cursor) => set({ cursor }),
     }),
     {
       name: 'planta-keuva:preferencias',
       version: 3,
-      partialize: ({ vista, camadas, exagero, intervaloCurvas }) => ({ vista, camadas, exagero, intervaloCurvas }),
+      // `realista` entrou depois sem mudar a versão: quem não tem ganha o padrão (ligado) na mescla.
+      partialize: ({ vista, camadas, exagero, intervaloCurvas, realista }) => ({ vista, camadas, exagero, intervaloCurvas, realista }),
       // A versão 0.1.0 tinha vista dividida e camadas diferentes: volta ao padrão novo.
       // A v3 ganhou a camada do fluxo das carretas (ligada).
       migrate: (salvo, versao) => {

@@ -7,6 +7,7 @@ import { useProjeto } from '../state/projeto'
 import { anguloEm, contorno, difAngulo, direcaoLado, esticar, finoComoMuro, esticarAltura, girar, type Elemento, type Lado } from '../model/elementos'
 import { emPlanta, noPlanoHorizontal, noPlanoVertical, passoDe, useArrasto } from './arrasto3d'
 import Etiqueta3D from './Etiqueta3D'
+import { Galpao3D, Tanque3D } from './Construcoes3D'
 
 const COR_SELECAO = '#5b8cff'
 const arred = (v: number, casas = 3) => Math.round(v * 10 ** casas) / 10 ** casas
@@ -28,34 +29,10 @@ function Material({ cor, selecionado }: { cor: string; selecionado: boolean }) {
 function Forma({ e, selecionado }: { e: Elemento; selecionado: boolean }) {
   const contornoSel = selecionado ? <Edges color={COR_SELECAO} lineWidth={2} threshold={15} /> : null
   switch (e.tipo) {
-    case 'galpao': {
-      const parede = e.altura * 0.72
-      const cumeeira = e.altura - parede
-      return (
-        <group>
-          <mesh position={[0, parede / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[e.largura, parede, e.comprimento]} />
-            <Material cor={e.cor} selecionado={selecionado} />
-            {contornoSel}
-          </mesh>
-          <Telhado largura={e.largura} comprimento={e.comprimento} altura={cumeeira} base={parede} selecionado={selecionado} />
-        </group>
-      )
-    }
+    case 'galpao':
+      return <Galpao3D e={e} selecionado={selecionado} />
     case 'tanque':
-      return (
-        <group>
-          <mesh position={[0, e.altura / 2, 0]} castShadow receiveShadow>
-            <cylinderGeometry args={[e.largura / 2, e.largura / 2, e.altura, 40]} />
-            <meshStandardMaterial color={e.cor} roughness={0.4} metalness={0.2} emissive={selecionado ? COR_SELECAO : '#000'} emissiveIntensity={selecionado ? 0.12 : 0} />
-            {contornoSel}
-          </mesh>
-          <mesh position={[0, e.altura + e.largura * 0.08, 0]} castShadow>
-            <coneGeometry args={[e.largura / 2, e.largura * 0.16, 40]} />
-            <meshStandardMaterial color={e.cor} roughness={0.4} metalness={0.2} />
-          </mesh>
-        </group>
-      )
+      return <Tanque3D e={e} selecionado={selecionado} />
     case 'predio':
       return (
         <group>
@@ -128,25 +105,6 @@ function Portao({ e, selecionado }: { e: Elemento; selecionado: boolean }) {
         </mesh>
       )}
     </group>
-  )
-}
-
-function Telhado({ largura, comprimento, altura, base, selecionado }: { largura: number; comprimento: number; altura: number; base: number; selecionado: boolean }) {
-  const geo = useMemo(() => {
-    const beiral = 0.6
-    const s = new THREE.Shape()
-    s.moveTo(-largura / 2 - beiral, 0)
-    s.lineTo(largura / 2 + beiral, 0)
-    s.lineTo(0, altura)
-    s.closePath()
-    const g = new THREE.ExtrudeGeometry(s, { depth: comprimento + beiral * 2, bevelEnabled: false })
-    g.translate(0, 0, -(comprimento + beiral * 2) / 2)
-    return g
-  }, [largura, comprimento, altura])
-  return (
-    <mesh geometry={geo} position={[0, base, 0]} castShadow receiveShadow>
-      <meshStandardMaterial color="#b4bcc6" roughness={0.45} metalness={0.5} emissive={selecionado ? COR_SELECAO : '#000'} emissiveIntensity={selecionado ? 0.1 : 0} />
-    </mesh>
   )
 }
 

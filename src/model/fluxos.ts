@@ -14,13 +14,14 @@ export const coresFluxo = ['#e5484d', '#f59f0a', '#3e9bff', '#30a46c', '#a855f7'
 export const comprimentoFluxo = (f: Pick<Fluxo, 'pontos'>) => length(f.pontos, false)
 
 /**
- * Onde desenhar as setas: a cada `espaco` metros ao longo do caminho (a primeira na metade do
- * espaço) e uma no fim. Cada seta tem posição e direção (ângulo em radianos, anti-horário).
+ * Onde desenhar as setas: a cada `espaco` metros ao longo do caminho (a primeira em `inicio`,
+ * por padrão na metade do espaço) e uma no fim. Cada seta tem posição e direção (ângulo em
+ * radianos, anti-horário).
  */
-export function setasDoFluxo(pts: Vec2[], espaco: number): { p: Vec2; ang: number }[] {
+export function setasDoFluxo(pts: Vec2[], espaco: number, inicio = espaco / 2): { p: Vec2; ang: number }[] {
   const out: { p: Vec2; ang: number }[] = []
   if (pts.length < 2 || espaco <= 0) return out
-  let proxima = espaco / 2
+  let proxima = inicio
   let andado = 0
   for (let i = 0; i < pts.length - 1; i++) {
     const [ax, ay] = pts[i], [bx, by] = pts[i + 1]

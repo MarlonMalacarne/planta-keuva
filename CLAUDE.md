@@ -42,6 +42,14 @@ da Keuva e gerir a obra. Usuário final: Marlon, não programa; textos da interf
   projeto inteiro com ids novos (um `Cmd+Z` volta). `usePropostaInicial` (`App.tsx`) carrega uma vez
   só, na primeira abertura com o projeto vazio. `proposta.test.ts` confere programa, áreas
   protegidas, sobreposições e que os fluxos passam pelo portão e pelas duas balanças.
+- 3D realista (`useEstado().realista`, botão Realista/Técnico): no realista somem recuo, áreas
+  protegidas, marcos e cotas, e os caminhos viram setas pintadas no asfalto. Luz em `Scene3D.tsx`
+  (`Luz`: sol, céu, `Environment` gerado sem HDR; `Acabamento`: N8AO + SMAA + ACES via
+  `@react-three/postprocessing`). O ambiente vale pouco para a cena toda (senão a foto lava) e
+  forte nos metais e vidros (`refletivos` em `Construcoes3D.tsx`, aplicado por `Reflexos`).
+  Pavilhão (`Galpao3D`: telha trapezoidal, mureta, claraboias, portas seccionais com marquise,
+  pele de vidro) e tanques de inox (`Tanque3D`, geometria única por medida com grupos de material)
+  em `Construcoes3D.tsx`; texturas de canvas (sem arquivos) em `texturas3d.ts` e `chao3d.ts`.
 - Caminhar em primeira pessoa (`Caminhada.tsx`, `useEstado().caminhando`): troca o OrbitControls,
   WASD/setas + arrastar para olhar, olhos a 1,7 m, não atravessa elementos; Esc sai.
 - Edição direta estilo Shapr3D: alças nas faces (`esticar`, a face oposta fica parada), topo

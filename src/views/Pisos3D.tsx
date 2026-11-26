@@ -4,7 +4,7 @@ import { Line } from '@react-three/drei'
 import type { Vec2 } from '../geo/polygon'
 import { useEstado } from '../state/store'
 import { useProjeto, type Piso } from '../state/projeto'
-import { escalaTextura, geometriaNoChao, texturaPiso } from './chao3d'
+import { asperezaPiso, escalaTextura, geometriaNoChao, texturasPiso } from './chao3d'
 
 type Altura = (x: number, y: number) => number
 
@@ -29,10 +29,15 @@ export function LinhaSobre({ pts, h, cor, fechada = false, tracejada = false, la
   return <Line points={pontos} color={cor} lineWidth={largura} dashed={tracejada} dashSize={1.5} gapSize={1} depthTest={!porCima} renderOrder={porCima ? 5 : 1} />
 }
 
+/**
+ * Altura do piso sobre o terreno. Pisos podem se sobrepor (concreto em cima do asfalto): o que
+ * vem depois na lista fica um pouco mais alto; o polygonOffset resolve o resto.
+ */
+export const elevacaoPiso = (ordem: number) => 0.05 + Math.min(ordem, 30) * 0.006
+
 function PisoNoChao({ p, h, selecionado, ordem }: { p: Piso; h: Altura; selecionado: boolean; ordem: number }) {
-  // Pisos podem se sobrepor (concreto em cima do asfalto): o que vem depois na lista fica por cima.
   const camada = Math.min(ordem, 30)
-  const geo = useMemo(() => geometriaNoChao(p.pontos, h, 0.07 + camada * 0.015, escalaTextura[p.material]), [p.pontos, p.material, h, camada])
+  const geo = useMemo(() => geometriaNoChao(p.pontos, h, elevacaoPiso(camada), escalaTextura[p.material]), [p.pontos, p.material, h, camada])
   useEffect(() => () => geo.dispose(), [geo])
   const aoClicar = (ev: ThreeEvent<MouseEvent>) => {
     const { ferramenta, caminhando } = useEstado.getState()
@@ -43,7 +48,7 @@ function PisoNoChao({ p, h, selecionado, ordem }: { p: Piso; h: Altura; selecion
   return (
     <group>
       <mesh geometry={geo} receiveShadow onClick={aoClicar}>
-        <meshStandardMaterial map={texturaPiso(p.material)} roughness={p.material === 'concreto' ? 0.8 : 0.95} polygonOffset polygonOffsetFactor={-1 - camada * 0.2} polygonOffsetUnits={-1 - camada * 2} />
+        <meshStandardMaterial map={texturasPiso(p.material).mapa} normalMap={texturasPiso(p.material).normais} roughness={asperezaPiso(p.material)} polygonOffset polygonOffsetFactor={-1 - camada * 0.2} polygonOffsetUnits={-1 - camada * 2} />
       </mesh>
       {selecionado && <LinhaSobre pts={p.pontos} h={h} cor="#7ea4ff" fechada largura={3} />}
     </group>

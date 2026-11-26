@@ -1,4 +1,4 @@
-import { area, bbox, centroid, contains, type Vec2 } from '../geo/polygon'
+import { area, centroid, contains, type Vec2 } from '../geo/polygon'
 import { fmt } from '../data/terreno'
 import { materiais, type MaterialPiso, type Piso } from '../model/pisos'
 
@@ -12,9 +12,9 @@ export function PadroesPiso() {
   return (
     <>
       <pattern id="piso-asfalto" width={1.6} height={1.6} patternUnits="userSpaceOnUse">
-        <rect width={1.6} height={1.6} fill={m.asfalto.cor} />
+        <rect width={1.6} height={1.6} fill="#46494f" />
         {[[0.2, 0.3], [0.9, 0.15], [1.3, 0.8], [0.5, 1.1], [1.1, 1.4], [0.15, 0.95]].map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r={0.05} fill={i % 2 ? '#56595f' : '#2c2f34'} />
+          <circle key={i} cx={x} cy={y} r={0.05} fill={i % 2 ? '#5d6066' : '#35383d'} />
         ))}
       </pattern>
       <pattern id="piso-cascalho" width={1} height={1} patternUnits="userSpaceOnUse">
@@ -29,7 +29,7 @@ export function PadroesPiso() {
       </pattern>
       <pattern id="piso-bloquete" width={1.2} height={0.6} patternUnits="userSpaceOnUse">
         <rect width={1.2} height={0.6} fill={m.bloquete.cor} />
-        <path d="M0,0H1.2M0,0.3H1.2M0.3,0V0.3M0.9,0V0.3M0.6,0.3V0.6M0,0.3V0.6" stroke="#7d5241" strokeWidth={0.04} />
+        <path d="M0,0H1.2M0,0.3H1.2M0.3,0V0.3M0.9,0V0.3M0.6,0.3V0.6M0,0.3V0.6" stroke="#77726a" strokeWidth={0.04} />
       </pattern>
       <pattern id="piso-grama" width={1.2} height={1.2} patternUnits="userSpaceOnUse">
         <rect width={1.2} height={1.2} fill={m.grama.cor} />
@@ -56,14 +56,29 @@ export function PisoNaPlanta({ p, px, selecionado }: { p: Piso; px: number; sele
   )
 }
 
+/** Comprimento do trecho da reta (horizontal ou vertical) por `c` que fica dentro do polígono. */
+function corda(pts: Vec2[], c: Vec2, vertical: boolean): number {
+  const [a, b] = vertical ? [1, 0] : [0, 1] // a: eixo da reta, b: eixo fixo
+  const cortes: number[] = []
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length]
+    if ((p[b] > c[b]) !== (q[b] > c[b])) cortes.push(p[a] + ((c[b] - p[b]) * (q[a] - p[a])) / (q[b] - p[b]))
+  }
+  cortes.sort((x, y) => x - y)
+  for (let i = 0; i + 1 < cortes.length; i += 2) if (cortes[i] <= c[a] && c[a] <= cortes[i + 1]) return cortes[i + 1] - cortes[i]
+  return 0
+}
+
 /**
  * Nome e área do piso, por cima dos elementos (a base dos tanques mostra o nome por cima deles).
- * Só quando cabe na tela e o centro cai dentro do piso (num "L" o centro fica fora).
+ * Só quando o texto cabe dentro do piso, no centro, e o centro não está coberto por outro piso
+ * (o asfalto não escreve o nome em cima da base dos tanques).
  */
-export function RotuloPiso({ p, px, fonte }: { p: Piso; px: number; fonte: number }) {
-  const b = bbox(p.pontos)
+export function RotuloPiso({ p, px, fonte, acima = [] }: { p: Piso; px: number; fonte: number; acima?: Piso[] }) {
   const c = centroid(p.pontos)
-  if (Math.min(b.width, b.height) / px <= 46 || !contains(p.pontos, c)) return null
+  if (!contains(p.pontos, c) || acima.some((o) => contains(o.pontos, c))) return null
+  const largura = Math.max(p.nome.length, 9) * 0.55 * fonte * 0.95
+  if (corda(p.pontos, c, false) < largura + 8 * px || corda(p.pontos, c, true) < fonte * 2.6) return null
   return (
     <g className="rotulo-piso">
       <text x={c[0]} y={-c[1] - fonte * 0.45} fontSize={fonte * 0.95}>

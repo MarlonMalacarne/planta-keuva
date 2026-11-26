@@ -37,6 +37,9 @@ e (nos próximos passos) terraplanagem, modelagem, importação de modelos e ges
   e duas balanças, pátio e vias de asfalto, rotatória e retorno para carretas, e o fluxo das
   carretas de uva e das carretas-tanque. Tudo fora do recuo, da reserva, da compensação e da mata
   que fica. Depois de carregar, cada peça é editável; `Cmd+Z` volta ao que havia antes.
+- **3D realista**: luz do dia com sombras, reflexo do céu no inox e nos vidros, pavilhão com
+  telha metálica, portas e claraboias, asfalto e concreto com textura. O botão **Técnico** volta
+  a mostrar recuo, áreas protegidas, marcos e cotas.
 - **Caminhar**: no 3D, o botão "Caminhar" coloca você no terreno em primeira pessoa. `W A S D`
   ou setas andam, arrastar olha em volta, Shift corre, `Esc` sai.
 - **Atualização automática**: ao abrir, o app procura versão nova e se instala com um clique.

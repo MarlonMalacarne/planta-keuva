@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { areasProtegidas, terreno, extensao, fmt } from '../data/terreno'
-import { bbox, centroid, dist, type Vec2 } from '../geo/polygon'
+import { bbox, centroid, contains, dist, type Vec2 } from '../geo/polygon'
 import { contours } from '../geo/elevation'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
@@ -318,6 +318,12 @@ export default function Plan2D() {
       >
         <defs>
           <PadroesPiso />
+          {/* Tampo do tanque visto de cima: brilho de um lado, sombra do outro (inox) */}
+          <radialGradient id="brilho-tanque" cx="0.38" cy="0.36" r="0.7">
+            <stop offset="0" stopColor="#ffffff" stopOpacity={0.7} />
+            <stop offset="0.45" stopColor="#ffffff" stopOpacity={0.08} />
+            <stop offset="1" stopColor="#0b1018" stopOpacity={0.35} />
+          </radialGradient>
           <pattern id="hachura-recuo" width={2} height={2} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1={0} y1={0} x2={0} y2={2} stroke="#ffb020" strokeWidth={0.35} />
           </pattern>
@@ -414,8 +420,8 @@ export default function Plan2D() {
           <Pegada key={e.id} e={e} px={px} fonte={fonte} selecionado={e.id === selElem} />
         ))}
 
-        {pisos.map((p) => (
-          <RotuloPiso key={p.id} p={p} px={px} fonte={fonte} />
+        {pisos.map((p, i) => (
+          <RotuloPiso key={p.id} p={p} px={px} fonte={fonte} acima={pisos.slice(i + 1)} />
         ))}
 
         {camadas.fluxos &&
@@ -489,6 +495,8 @@ const centroSupressao = centroid(terreno.supressao.poligono)
 
 /** Nomes das áreas do laudo, por cima das árvores. */
 function RotulosProtegidas({ fonte }: { fonte: number }) {
+  // Com obra em cima (pisos), o nome da supressão só atrapalha a leitura do projeto.
+  const supressaoCoberta = useProjeto((p) => p.pisos.some((x) => contains(x.pontos, centroSupressao)))
   return (
     <g>
       {areasProtegidas.map((a) => {
@@ -507,12 +515,16 @@ function RotulosProtegidas({ fonte }: { fonte: number }) {
           </g>
         )
       })}
-      <text x={centroSupressao[0]} y={-centroSupressao[1] - fonte * 0.55} fontSize={fonte * 0.85} className="rotulo-supressao">
-        Supressão autorizada
-      </text>
-      <text x={centroSupressao[0]} y={-centroSupressao[1] + fonte * 0.55} fontSize={fonte * 0.75} className="rotulo-supressao">
-        ligustros · 0,49 ha
-      </text>
+      {!supressaoCoberta && (
+        <>
+          <text x={centroSupressao[0]} y={-centroSupressao[1] - fonte * 0.55} fontSize={fonte * 0.85} className="rotulo-supressao">
+            Supressão autorizada
+          </text>
+          <text x={centroSupressao[0]} y={-centroSupressao[1] + fonte * 0.55} fontSize={fonte * 0.75} className="rotulo-supressao">
+            ligustros · 0,49 ha
+          </text>
+        </>
+      )}
     </g>
   )
 }
@@ -539,9 +551,16 @@ function Pegada({ e, px, fonte, selecionado }: { e: Elemento; px: number; fonte:
     )
   return (
     <g data-elemento={e.id} className="alvo-arrastavel">
-      <g fill={e.cor} fillOpacity={0.85} stroke={cor} strokeWidth={(selecionado || invadida ? 2.5 : 1.2) * px} strokeDasharray={invadida ? `${5 * px} ${3 * px}` : undefined}>
+      <g fill={e.cor} fillOpacity={e.tipo === 'tanque' || e.tipo === 'galpao' ? 1 : 0.85} stroke={cor} strokeWidth={(selecionado || invadida ? 2.5 : e.tipo === 'tanque' ? 0.8 : 1.2) * px} strokeDasharray={invadida ? `${5 * px} ${3 * px}` : undefined}>
         {forma}
       </g>
+      {e.tipo === 'tanque' && (
+        <g pointerEvents="none">
+          <circle cx={e.x} cy={-e.y} r={e.largura / 2} fill="url(#brilho-tanque)" />
+          <circle cx={e.x} cy={-e.y} r={Math.min(0.3, e.largura * 0.12)} fill="none" stroke="rgba(20,28,38,0.45)" strokeWidth={0.8 * px} />
+        </g>
+      )}
+      {e.tipo === 'galpao' && <TelhadoNaPlanta e={e} px={px} />}
       {cabeRotulo && (
         <>
           <text x={e.x} y={-e.y - fonte * 0.4} fontSize={fonte} className="rotulo-elemento">
@@ -552,6 +571,22 @@ function Pegada({ e, px, fonte, selecionado }: { e: Elemento; px: number; fonte:
           </text>
         </>
       )}
+    </g>
+  )
+}
+
+/** Cobertura do galpão vista de cima: cumeeira no lado maior e uma água mais escura. */
+function TelhadoNaPlanta({ e, px }: { e: Elemento; px: number }) {
+  const a = (e.rot * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a)
+  const mundo = (lx: number, ly: number): Vec2 => [e.x + lx * c - ly * sn, e.y + lx * sn + ly * c]
+  const L = e.largura / 2, C = e.comprimento / 2
+  const deitado = e.largura >= e.comprimento
+  const cumeeira = deitado ? [mundo(-L, 0), mundo(L, 0)] : [mundo(0, -C), mundo(0, C)]
+  const sombra = deitado ? [mundo(-L, 0), mundo(L, 0), mundo(L, -C), mundo(-L, -C)] : [mundo(0, -C), mundo(0, C), mundo(L, C), mundo(L, -C)]
+  return (
+    <g pointerEvents="none">
+      <path d={caminho(sombra, true)} fill="rgba(12,18,28,0.12)" />
+      <path d={caminho(cumeeira)} stroke="rgba(12,18,28,0.35)" strokeWidth={1.4 * px} fill="none" />
     </g>
   )
 }

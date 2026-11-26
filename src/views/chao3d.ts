@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { dist, rng, type Vec2 } from '../geo/polygon'
 import { materiais, type MaterialPiso } from '../model/pisos'
+import { normaisDoCanvas } from './texturas3d'
 
 /**
  * Malha que acompanha o relevo dentro do contorno `pts`, `elevar` metros acima do chão.
@@ -36,9 +37,20 @@ export function geometriaNoChao(pts: Vec2[], h: (x: number, y: number) => number
 }
 
 /** Tamanho (m) de uma repetição da textura de cada material. */
-export const escalaTextura: Record<MaterialPiso, number> = { asfalto: 4, cascalho: 2, concreto: 3, bloquete: 1.2, grama: 3, terra: 4 }
+export const escalaTextura: Record<MaterialPiso, number> = { asfalto: 6, cascalho: 3, concreto: 4, bloquete: 1.6, grama: 4, terra: 5 }
 
-const texturas = new Map<MaterialPiso, THREE.CanvasTexture>()
+/** Força do relevo (mapa de normais) e aspereza de cada material. */
+const acabamento: Record<MaterialPiso, { relevo: number; aspereza: number }> = {
+  asfalto: { relevo: 2.2, aspereza: 0.9 },
+  cascalho: { relevo: 4, aspereza: 0.95 },
+  concreto: { relevo: 1.2, aspereza: 0.82 },
+  bloquete: { relevo: 3, aspereza: 0.88 },
+  grama: { relevo: 2.5, aspereza: 0.95 },
+  terra: { relevo: 1.6, aspereza: 0.97 },
+}
+export const asperezaPiso = (m: MaterialPiso) => acabamento[m].aspereza
+
+const texturas = new Map<MaterialPiso, { mapa: THREE.CanvasTexture; normais: THREE.Texture }>()
 
 const tom = (cor: string, f: number) => {
   const c = new THREE.Color(cor)
@@ -46,65 +58,129 @@ const tom = (cor: string, f: number) => {
   return '#' + c.getHexString()
 }
 
-/** Textura desenhada no canvas (sem arquivos), igual para todos os pisos do mesmo material. */
-export function texturaPiso(m: MaterialPiso) {
-  const pronta = texturas.get(m)
-  if (pronta) return pronta
-  const N = 256
+/** Desenho do material num canvas que emenda nas bordas (sem arquivos). */
+function desenhar(m: MaterialPiso) {
+  const N = 512
   const c = document.createElement('canvas')
   c.width = c.height = N
   const g = c.getContext('2d')!
-  // Com a luz do 3D o asfalto escuro vira preto: clareia um pouco a base.
-  const base = tom(materiais[m].cor, m === 'asfalto' ? 0.11 : 0.02)
   const r = rng(m.length * 97 + m.charCodeAt(0))
+  // Na luz do 3D o asfalto escuro vira preto: a base é um cinza de asfalto já gasto.
+  const base = m === 'asfalto' ? '#55585d' : m === 'grama' ? '#65864a' : m === 'bloquete' ? tom(materiais[m].cor, 0.03) : tom(materiais[m].cor, 0.02)
   g.fillStyle = base
   g.fillRect(0, 0, N, N)
-  const pontos = (n: number, rMin: number, rMax: number, var_: number) => {
+  /** Desenha nas 9 posições para a textura emendar sem costura. */
+  const emendado = (x: number, y: number, raio: number, f: (x: number, y: number) => void) => {
+    for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) if (x + dx > -raio && x + dx < N + raio && y + dy > -raio && y + dy < N + raio) f(x + dx, y + dy)
+  }
+  const pontos = (n: number, rMin: number, rMax: number, var_: number, sombra = false) => {
     for (let i = 0; i < n; i++) {
-      g.fillStyle = tom(base, (r() - 0.5) * var_)
-      g.beginPath()
-      g.arc(r() * N, r() * N, rMin + r() * (rMax - rMin), 0, Math.PI * 2)
-      g.fill()
+      const x = r() * N, y = r() * N, rr = rMin + r() * (rMax - rMin)
+      const cor = tom(base, (r() - 0.5) * var_)
+      emendado(x, y, rr + 2, (px, py) => {
+        if (sombra) {
+          g.fillStyle = 'rgba(0,0,0,0.25)'
+          g.beginPath()
+          g.arc(px + rr * 0.3, py + rr * 0.35, rr, 0, Math.PI * 2)
+          g.fill()
+        }
+        g.fillStyle = cor
+        g.beginPath()
+        g.ellipse(px, py, rr, rr * (0.7 + r() * 0.3), r() * Math.PI, 0, Math.PI * 2)
+        g.fill()
+      })
     }
   }
-  if (m === 'asfalto') pontos(2200, 0.6, 1.8, 0.22)
-  else if (m === 'cascalho') pontos(900, 2, 5.5, 0.3)
-  else if (m === 'terra') {
-    pontos(500, 3, 10, 0.12)
-    pontos(500, 0.8, 2, 0.2)
+  const manchas = (n: number, rMin: number, rMax: number, cor: string, alfa: number) => {
+    for (let i = 0; i < n; i++) {
+      const x = r() * N, y = r() * N, rr = rMin + r() * (rMax - rMin)
+      emendado(x, y, rr, (px, py) => {
+        const gr = g.createRadialGradient(px, py, 0, px, py, rr)
+        gr.addColorStop(0, cor.replace('A', String(alfa)))
+        gr.addColorStop(1, cor.replace('A', '0'))
+        g.fillStyle = gr
+        g.fillRect(px - rr, py - rr, rr * 2, rr * 2)
+      })
+    }
+  }
+  if (m === 'asfalto') {
+    manchas(14, 40, 120, 'rgba(20,22,26,A)', 0.16)
+    manchas(8, 30, 90, 'rgba(140,140,140,A)', 0.07)
+    pontos(9000, 0.5, 1.5, 0.28)
+    pontos(900, 1.2, 2.4, 0.18)
+  } else if (m === 'cascalho') {
+    manchas(10, 50, 140, 'rgba(90,80,65,A)', 0.15)
+    pontos(2600, 2.5, 6, 0.32, true)
+  } else if (m === 'terra') {
+    manchas(16, 40, 130, 'rgba(70,50,30,A)', 0.18)
+    pontos(900, 3, 10, 0.12)
+    pontos(2000, 0.8, 2, 0.2)
   } else if (m === 'grama') {
+    manchas(14, 50, 150, 'rgba(150,140,60,A)', 0.14)
+    manchas(14, 40, 130, 'rgba(20,50,20,A)', 0.18)
     g.lineCap = 'round'
-    for (let i = 0; i < 2600; i++) {
-      g.strokeStyle = tom(base, (r() - 0.5) * 0.22)
-      g.lineWidth = 1 + r()
+    for (let i = 0; i < 16000; i++) {
       const x = r() * N, y = r() * N
-      g.beginPath()
-      g.moveTo(x, y)
-      g.lineTo(x + (r() - 0.5) * 4, y - 3 - r() * 5)
-      g.stroke()
+      const cor = tom(base, (r() - 0.45) * 0.3)
+      const dx = (r() - 0.5) * 5, dy = -4 - r() * 7, w = 0.8 + r() * 1.2
+      emendado(x, y, 12, (px, py) => {
+        g.strokeStyle = cor
+        g.lineWidth = w
+        g.beginPath()
+        g.moveTo(px, py)
+        g.lineTo(px + dx, py + dy)
+        g.stroke()
+      })
     }
   } else if (m === 'concreto') {
-    pontos(700, 0.6, 1.4, 0.06)
-    g.strokeStyle = tom(base, -0.16)
+    manchas(18, 40, 140, 'rgba(110,105,95,A)', 0.12)
+    manchas(10, 30, 90, 'rgba(255,255,250,A)', 0.12)
+    pontos(5000, 0.5, 1.2, 0.07)
+    // juntas serradas a cada 4 m (a textura inteira) e no meio
+    g.strokeStyle = tom(base, -0.22)
     g.lineWidth = 2
     g.strokeRect(1, 1, N - 2, N - 2)
+    g.globalAlpha = 0.5
+    g.beginPath()
+    g.moveTo(N / 2, 0)
+    g.lineTo(N / 2, N)
+    g.moveTo(0, N / 2)
+    g.lineTo(N, N / 2)
+    g.stroke()
+    g.globalAlpha = 1
   } else if (m === 'bloquete') {
-    const linhas = 6, larg = N / 3
-    for (let j = 0; j < linhas; j++)
-      for (let i = -1; i < 4; i++) {
-        const x = i * larg + (j % 2 ? larg / 2 : 0), y = (j * N) / linhas
-        g.fillStyle = tom(base, (r() - 0.5) * 0.08)
-        g.fillRect(x + 1.5, y + 1.5, larg - 3, N / linhas - 3)
-      }
-    g.globalCompositeOperation = 'destination-over'
-    g.fillStyle = tom(base, -0.2)
+    // Paver retangular (20 × 10 cm) em fileiras desencontradas
+    g.fillStyle = tom(base, -0.25)
     g.fillRect(0, 0, N, N)
-    g.globalCompositeOperation = 'source-over'
+    const linhas = 16, colunas = 8, lb = N / colunas, hb = N / linhas
+    for (let j = 0; j < linhas; j++)
+      for (let i = -1; i <= colunas; i++) {
+        const x = i * lb + (j % 2 ? lb / 2 : 0), y = j * hb
+        g.fillStyle = tom(base, (r() - 0.5) * 0.12)
+        g.beginPath()
+        g.roundRect(x + 1.5, y + 1.5, lb - 3, hb - 3, 3)
+        g.fill()
+      }
+    pontos(3000, 0.5, 1.2, 0.1)
   }
-  const t = new THREE.CanvasTexture(c)
-  t.wrapS = t.wrapT = THREE.RepeatWrapping
-  t.colorSpace = THREE.SRGBColorSpace
-  t.anisotropy = 8
-  texturas.set(m, t)
-  return t
+  return c
+}
+
+/** Textura (cor e relevo) igual para todos os pisos do mesmo material. */
+export function texturaPiso(m: MaterialPiso) {
+  return texturasPiso(m).mapa
+}
+
+export function texturasPiso(m: MaterialPiso) {
+  const pronta = texturas.get(m)
+  if (pronta) return pronta
+  const c = desenhar(m)
+  const mapa = new THREE.CanvasTexture(c)
+  mapa.wrapS = mapa.wrapT = THREE.RepeatWrapping
+  mapa.colorSpace = THREE.SRGBColorSpace
+  mapa.anisotropy = 8
+  const normais = normaisDoCanvas(c, acabamento[m].relevo)
+  const par = { mapa, normais }
+  texturas.set(m, par)
+  return par
 }
