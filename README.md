@@ -16,8 +16,12 @@ e (nos próximos passos) terraplanagem, modelagem, importação de modelos e ges
 - **Elementos da obra**: em **Adicionar**, coloque galpão, prédio, tanque/silo, muro ou bloco.
   O app escolhe um lugar livre dentro do lote, fora do recuo e da mata.
 - **Selecionar e editar**: clique num elemento (no 3D, na planta ou na lista à esquerda).
-  Arraste as setas para mover, use `R` para girar e `E` para redimensionar, ou digite posição,
-  giro e medidas exatas no painel da direita. `Cmd+D` duplica, `Delete` apaga, `Cmd+Z` desfaz.
+  Arraste o elemento para mover, puxe as setas azuis para esticar uma face (a face oposta fica
+  parada), a seta de cima para a altura e o anel para girar. Shift deixa os passos finos. Também
+  dá para digitar posição, giro e medidas exatas no painel da direita. `Cmd+D` duplica,
+  `Delete` apaga, `Cmd+Z` desfaz.
+- **Árvores**: cada árvore da mata é um objeto. Clique para selecionar, Shift + clique para somar,
+  Shift + arraste na planta para pegar uma área. Arraste para mover, `Delete` apaga.
 - **Atualização automática**: ao abrir, o app procura versão nova e se instala com um clique.
 
 ## Instalar no Mac

@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Eye, EyeOff, LandPlot } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye, EyeOff, LandPlot, TreeDeciduous } from 'lucide-react'
 import { nomesCamadas, useEstado, type Camadas } from '../state/store'
 import { useProjeto } from '../state/projeto'
 import { iconeElemento } from './icones'
 
 export default function PainelProjeto() {
   const { camadas, alternar, exagero, setExagero, intervaloCurvas, setIntervalo } = useEstado()
-  const { elementos, selecao, selecionar, cotas } = useProjeto()
+  const { elementos, selecao, selecionar, cotas, arvores, restaurarMata } = useProjeto()
+  const todasArvores = selecao?.tipo === 'arvores' && selecao.ids.length === arvores.length && arvores.length > 0
   const [ajustes, setAjustes] = useState(false)
 
   return (
@@ -26,6 +27,15 @@ export default function PainelProjeto() {
           )
         })}
         {!elementos.length && <p className="vazio">Use “Adicionar” para colocar galpões, prédios e tanques.</p>}
+        {arvores.length > 0 ? (
+          <button className={`item recuado ${todasArvores ? 'ativo' : ''}`} onClick={() => selecionar({ tipo: 'arvores', ids: arvores.map((a) => a.id) })} title="Seleciona todas as árvores">
+            <TreeDeciduous size={15} /> Árvores <small>{arvores.length.toLocaleString('pt-BR')}</small>
+          </button>
+        ) : (
+          <button className="item recuado apagado" onClick={restaurarMata}>
+            <TreeDeciduous size={15} /> Repor a mata original
+          </button>
+        )}
       </section>
 
       <section>

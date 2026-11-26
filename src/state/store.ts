@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type Vista = '2d' | '3d'
-export type Ferramenta = 'selecionar' | 'girar' | 'escala' | 'cota'
+export type Ferramenta = 'selecionar' | 'cota'
 
 export interface Camadas {
   foto: boolean

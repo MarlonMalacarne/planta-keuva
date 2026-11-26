@@ -35,12 +35,11 @@ function useAtalhos() {
       else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (p.selecao?.tipo === 'elemento') p.removerElemento(p.selecao.id)
         else if (p.selecao?.tipo === 'cota') p.removerCota(p.selecao.id)
+        else if (p.selecao?.tipo === 'arvores') p.removerArvores(p.selecao.ids)
       } else if (e.key === 'Escape') {
         est.setFerramenta('selecionar')
         p.selecionar(null)
       } else if (k === 'v' || k === 'm') est.setFerramenta('selecionar')
-      else if (k === 'r') est.setFerramenta('girar')
-      else if (k === 'e') est.setFerramenta('escala')
       else if (k === 'c') est.setFerramenta('cota')
       else if (k === '2') est.setVista('2d')
       else if (k === '3') est.setVista('3d')

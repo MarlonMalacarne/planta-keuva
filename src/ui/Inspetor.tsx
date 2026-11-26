@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Copy, Crosshair, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Crosshair, Trash2, TreeDeciduous } from 'lucide-react'
 import { calcularResumo, terreno, fmt } from '../data/terreno'
-import { useElevacao, useProjeto, type Cota, type Elemento } from '../state/projeto'
+import { useElevacao, useProjeto, type Arvore, type Cota, type Elemento } from '../state/projeto'
 import { areaProjecao, catalogo, coresSugeridas, volume } from '../model/elementos'
 import { CampoNumero } from './Campos'
 import { iconeElemento } from './icones'
 
 export default function Inspetor() {
-  const { selecao, elementos, cotas } = useProjeto()
+  const { selecao, elementos, cotas, arvores } = useProjeto()
   const el = selecao?.tipo === 'elemento' ? elementos.find((e) => e.id === selecao.id) : undefined
   const cota = selecao?.tipo === 'cota' ? cotas.find((c) => c.id === selecao.id) : undefined
+  const ids = selecao?.tipo === 'arvores' ? new Set(selecao.ids) : null
+  const arvs = ids ? arvores.filter((a) => ids.has(a.id)) : []
   return (
     <aside className="painel painel-dir vidro">
-      {el ? <InspetorElemento key={el.id} e={el} /> : cota ? <InspetorCota key={cota.id} c={cota} /> : <ResumoTerreno />}
+      {el ? <InspetorElemento key={el.id} e={el} /> : cota ? <InspetorCota key={cota.id} c={cota} /> : arvs.length ? <InspetorArvores key={arvs.length === 1 ? arvs[0].id : 'varias'} lista={arvs} /> : <ResumoTerreno />}
     </aside>
   )
 }
@@ -80,7 +82,46 @@ function InspetorElemento({ e }: { e: Elemento }) {
           <Trash2 size={15} /> Apagar
         </button>
       </div>
-      <p className="dica">Arraste as setas no 3D para mover. R gira, E redimensiona, V volta a mover.</p>
+      <p className="dica">Arraste o elemento para mover. Puxe as setas azuis para esticar uma face e o anel para girar. Segure Shift para passos finos.</p>
+    </div>
+  )
+}
+
+function InspetorArvores({ lista }: { lista: Arvore[] }) {
+  const { editarArvores, removerArvores } = useProjeto()
+  const a = lista[0]
+  const varias = lista.length > 1
+  const todas = (d: Partial<Arvore>) => editarArvores(Object.fromEntries(lista.map((x) => [x.id, d])))
+  const media = (k: 'altura' | 'copa') => Math.round((lista.reduce((s, x) => s + x[k], 0) / lista.length) * 10) / 10
+  return (
+    <div className="inspetor">
+      <div className="titulo-inspetor">
+        <span className="icone-tipo" style={{ background: '#4f9d69' }}>
+          <TreeDeciduous size={16} />
+        </span>
+        <b className="nome">{varias ? `${lista.length.toLocaleString('pt-BR')} árvores` : `Árvore ${a.id}`}</b>
+      </div>
+      <p className="tipo">{varias ? 'Mudanças valem para todas as selecionadas' : 'Da mata do terreno'}</p>
+      {!varias && (
+        <>
+          <h4>Posição</h4>
+          <div className="grade-3 dois">
+            <CampoNumero rotulo="X" valor={a.x} onSalvar={(x) => editarArvores({ [a.id]: { x } })} />
+            <CampoNumero rotulo="Y" valor={a.y} onSalvar={(y) => editarArvores({ [a.id]: { y } })} />
+          </div>
+        </>
+      )}
+      <h4>{varias ? 'Medidas (média)' : 'Medidas'}</h4>
+      <div className="grade-3 dois">
+        <CampoNumero rotulo="Altura" valor={media('altura')} min={1} casas={1} onSalvar={(altura) => todas({ altura })} />
+        <CampoNumero rotulo="Copa (Ø)" valor={media('copa')} min={0.5} casas={1} onSalvar={(copa) => todas({ copa })} />
+      </div>
+      <div className="acoes">
+        <button className="botao-perigo" onClick={() => removerArvores(lista.map((x) => x.id))} title="Delete">
+          <Trash2 size={15} /> {varias ? `Apagar ${lista.length.toLocaleString('pt-BR')} árvores` : 'Apagar árvore'}
+        </button>
+      </div>
+      <p className="dica">Arraste para mover. Shift + clique soma árvores à seleção. Na planta 2D, Shift + arraste seleciona uma área inteira.</p>
     </div>
   )
 }

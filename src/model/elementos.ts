@@ -54,7 +54,63 @@ export function contorno(e: Elemento): [number, number][] {
 }
 
 type P = [number, number]
-const dentro = (poly: P[], [x, y]: P) => {
+
+/** Face lateral do elemento: x± puxa a largura, y± puxa o comprimento (eixos do próprio elemento). */
+export type Lado = 'x+' | 'x-' | 'y+' | 'y-'
+
+const arredondar = (v: number, casas = 3) => Math.round(v * 10 ** casas) / 10 ** casas
+const noPasso = (v: number, passo: number) => (passo > 0 ? Math.round(v / passo) * passo : v)
+
+/** Direção, em planta, para onde a face `lado` aponta. */
+export function direcaoLado(e: Pick<Elemento, 'rot'>, lado: Lado): P {
+  const a = (e.rot * Math.PI) / 180
+  const c = Math.cos(a), s = Math.sin(a)
+  const d: P = lado[0] === 'x' ? [c, s] : [-s, c]
+  return lado[1] === '+' ? d : [-d[0], -d[1]]
+}
+
+export function medidaMinima(e: Elemento, eixo: 'largura' | 'comprimento' | 'altura') {
+  if (eixo === 'altura') return 0.3
+  return e.tipo === 'muro' && eixo === 'largura' ? 0.05 : 0.5
+}
+
+/**
+ * Puxa a face `lado` por `d` metros a partir do elemento `e` (como estava no início do arrasto).
+ * A face oposta fica parada; no tanque o diâmetro cresce em volta do centro.
+ */
+export function esticar(e: Elemento, lado: Lado, d: number, passo = 0.5): Partial<Elemento> {
+  if (e.tipo === 'tanque') {
+    const diam = arredondar(Math.max(medidaMinima(e, 'largura'), noPasso(e.largura + 2 * d, passo)))
+    return { largura: diam, comprimento: diam }
+  }
+  const eixo = lado[0] === 'x' ? 'largura' : 'comprimento'
+  const novo = arredondar(Math.max(medidaMinima(e, eixo), noPasso(e[eixo] + d, passo)))
+  const delta = novo - e[eixo]
+  const [dx, dy] = direcaoLado(e, lado)
+  return { [eixo]: novo, x: arredondar(e.x + (dx * delta) / 2), y: arredondar(e.y + (dy * delta) / 2) }
+}
+
+export function esticarAltura(e: Elemento, d: number, passo = 0.5): Partial<Elemento> {
+  return { altura: arredondar(Math.max(medidaMinima(e, 'altura'), noPasso(e.altura + d, passo))) }
+}
+
+/** Gira o elemento pelo ângulo (graus) varrido pelo mouse, em passos de `passo` graus. */
+export function girar(e: Elemento, varrido: number, passo = 5): Partial<Elemento> {
+  const rot = noPasso(e.rot + varrido, passo)
+  return { rot: arredondar(((rot % 360) + 360) % 360, 2) }
+}
+
+/** Ângulo em graus, sentido anti-horário, do ponto p visto do centro do elemento. */
+export function anguloEm(e: Pick<Elemento, 'x' | 'y'>, [x, y]: P) {
+  return (Math.atan2(y - e.y, x - e.x) * 180) / Math.PI
+}
+
+/** Diferença entre dois ângulos, entre -180 e 180. */
+export function difAngulo(a: number, b: number) {
+  return ((((b - a) % 360) + 540) % 360) - 180
+}
+
+const dentro =(poly: P[], [x, y]: P) => {
   let d = false
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const [xi, yi] = poly[i], [xj, yj] = poly[j]

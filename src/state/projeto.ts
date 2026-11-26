@@ -5,16 +5,18 @@ import { terreno, extensao } from '../data/terreno'
 import type { Vec2 } from '../geo/polygon'
 import { ElevationModel, type Cota } from '../geo/elevation'
 import { catalogo, type Elemento, type TipoElemento } from '../model/elementos'
+import { arvoresDaMata, proximoIdArvore, type Arvore } from '../model/arvores'
 
-export type { Cota, Elemento }
+export type { Cota, Elemento, Arvore }
 
 const cotasDaFoto: Cota[] = terreno.cotas.map((c) => ({ ...c, origem: 'foto' as const }))
 
-export type Selecao = { tipo: 'cota' | 'elemento'; id: string } | null
+export type Selecao = { tipo: 'cota' | 'elemento'; id: string } | { tipo: 'arvores'; ids: string[] } | null
 
 interface Foto {
   cotas: Cota[]
   elementos: Elemento[]
+  arvores: Arvore[]
 }
 
 interface Projeto extends Foto {
@@ -34,6 +36,12 @@ interface Projeto extends Foto {
   editarElemento: (id: string, dados: Partial<Omit<Elemento, 'id'>>, registrar?: boolean) => void
   duplicarElemento: (id: string) => string | null
   removerElemento: (id: string) => void
+
+  adicionarArvore: (x: number, y: number) => string
+  /** Muda várias árvores de uma vez (mover um grupo, trocar a altura de todas...). */
+  editarArvores: (mudancas: Record<string, Partial<Omit<Arvore, 'id'>>>, registrar?: boolean) => void
+  removerArvores: (ids: string[]) => void
+  restaurarMata: () => void
 }
 
 const LIMITE_HISTORICO = 100
@@ -56,7 +64,7 @@ function proximoNome(base: string, elementos: Elemento[]) {
 export const useProjeto = create<Projeto>()(
   persist(
     (set, get) => {
-      const foto = (): Foto => ({ cotas: get().cotas, elementos: get().elementos })
+      const foto = (): Foto => ({ cotas: get().cotas, elementos: get().elementos, arvores: get().arvores })
       const comHistorico = (mudanca: Partial<Foto>) => ({
         ...mudanca,
         historico: [...get().historico, foto()].slice(-LIMITE_HISTORICO),
@@ -64,6 +72,7 @@ export const useProjeto = create<Projeto>()(
       return {
         cotas: cotasDaFoto,
         elementos: [],
+        arvores: arvoresDaMata(),
         historico: [],
         selecao: null,
         selecionar: (selecao) => set({ selecao }),
@@ -72,9 +81,7 @@ export const useProjeto = create<Projeto>()(
           const h = get().historico
           if (!h.length) return
           const anterior = h[h.length - 1]
-          const s = get().selecao
-          const aindaExiste = s && (s.tipo === 'cota' ? anterior.cotas : anterior.elementos).some((x) => x.id === s.id)
-          set({ ...anterior, historico: h.slice(0, -1), selecao: aindaExiste ? s : null })
+          set({ ...anterior, historico: h.slice(0, -1), selecao: selecaoValida(get().selecao, anterior) })
         },
 
         adicionarCota: (x, y, z) => {
@@ -124,21 +131,48 @@ export const useProjeto = create<Projeto>()(
           return novoId
         },
         removerElemento: (id) => set({ ...comHistorico({ elementos: get().elementos.filter((e) => e.id !== id) }), selecao: null }),
+
+        adicionarArvore: (x, y) => {
+          const id = proximoIdArvore(get().arvores)
+          set({ ...comHistorico({ arvores: [...get().arvores, { id, x, y, altura: 9, copa: 6 }] }), selecao: { tipo: 'arvores', ids: [id] } })
+          return id
+        },
+        editarArvores: (mudancas, registrar = true) => {
+          const arvores = get().arvores.map((a) => (mudancas[a.id] ? { ...a, ...mudancas[a.id] } : a))
+          set(registrar ? comHistorico({ arvores }) : { arvores })
+        },
+        removerArvores: (ids) => {
+          const fora = new Set(ids)
+          set({ ...comHistorico({ arvores: get().arvores.filter((a) => !fora.has(a.id)) }), selecao: null })
+        },
+        restaurarMata: () => set({ ...comHistorico({ arvores: arvoresDaMata() }), selecao: null }),
       }
     },
     {
       name: 'planta-keuva:projeto',
-      version: 2,
-      partialize: ({ cotas, elementos }) => ({ cotas, elementos }),
-      // v1 (0.1.0) só tinha cotas.
-      migrate: (salvo, versao) => {
-        const s = (salvo ?? {}) as Partial<Foto>
-        if (versao < 2) return { cotas: s.cotas ?? cotasDaFoto, elementos: [] }
-        return s as Foto
-      },
+      version: 3,
+      partialize: ({ cotas, elementos, arvores }) => ({ cotas, elementos, arvores }),
+      migrate: migrarProjeto,
     },
   ),
 )
+
+/** v1 (0.1.0) só tinha cotas; v2 (0.2.0) não tinha as árvores como objetos. */
+export function migrarProjeto(salvo: unknown): Foto {
+  const s = (salvo ?? {}) as Partial<Foto>
+  return { cotas: s.cotas ?? cotasDaFoto, elementos: s.elementos ?? [], arvores: s.arvores ?? arvoresDaMata() }
+}
+
+/** Mantém só a parte da seleção que ainda existe (depois de desfazer, por exemplo). */
+function selecaoValida(s: Selecao, f: Foto): Selecao {
+  if (!s) return null
+  if (s.tipo === 'arvores') {
+    const ids = new Set(f.arvores.map((a) => a.id))
+    const restam = s.ids.filter((id) => ids.has(id))
+    return restam.length ? { tipo: 'arvores', ids: restam } : null
+  }
+  return (s.tipo === 'cota' ? f.cotas : f.elementos).some((x) => x.id === s.id) ? s : null
+}
 
 /** Modelo de relevo recalculado sempre que as cotas mudam. */
 export function useElevacao() {

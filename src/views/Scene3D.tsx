@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { Line, OrbitControls, Sky } from '@react-three/drei'
 import * as THREE from 'three'
 import { terreno, extensao } from '../data/terreno'
-import { centroid, rng, scatter, type Vec2 } from '../geo/polygon'
+import { centroid, type Vec2 } from '../geo/polygon'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
 import Elementos3D from './Elementos3D'
+import Arvores3D from './Arvores3D'
 
 /** Cota de referência: o 3D trabalha com alturas relativas a ela. */
 export const COTA_BASE = 770
@@ -144,50 +145,6 @@ function AreaNoChao({ pts, cor, opacidade }: { pts: Vec2[]; cor: string; opacida
   )
 }
 
-/** Mata nativa: árvores instanciadas com altura, copa e tom variados. */
-function Mata() {
-  const h = useAltura()
-  const ex = useEstado((e) => e.exagero)
-  const troncos = useRef<THREE.InstancedMesh>(null)
-  const copas = useRef<THREE.InstancedMesh>(null)
-  const pontos = useMemo(() => scatter(terreno.mata.poligono, 5.5, 42), [])
-
-  useEffect(() => {
-    const r = rng(7)
-    const m = new THREE.Matrix4()
-    const q = new THREE.Quaternion()
-    const cor = new THREE.Color()
-    pontos.forEach(([x, y], i) => {
-      const alt = 7 + r() * 9
-      const raio = 2.2 + r() * 2.4
-      const base = h(x, y)
-      q.setFromEuler(new THREE.Euler(0, r() * Math.PI * 2, 0))
-      m.compose(new THREE.Vector3(x, base + alt * 0.3, -y), q, new THREE.Vector3(0.25 + r() * 0.15, alt * 0.6, 0.25 + r() * 0.15))
-      troncos.current!.setMatrixAt(i, m)
-      m.compose(new THREE.Vector3(x, base + alt * 0.72, -y), q, new THREE.Vector3(raio, raio * (0.75 + r() * 0.35), raio))
-      copas.current!.setMatrixAt(i, m)
-      cor.setHSL(0.26 + r() * 0.08, 0.35 + r() * 0.25, 0.2 + r() * 0.14)
-      copas.current!.setColorAt(i, cor)
-    })
-    troncos.current!.instanceMatrix.needsUpdate = true
-    copas.current!.instanceMatrix.needsUpdate = true
-    if (copas.current!.instanceColor) copas.current!.instanceColor.needsUpdate = true
-  }, [pontos, h, ex])
-
-  return (
-    <group>
-      <instancedMesh ref={troncos} args={[undefined, undefined, pontos.length]} castShadow>
-        <cylinderGeometry args={[1, 1.3, 1, 6]} />
-        <meshStandardMaterial color="#5b4636" roughness={1} />
-      </instancedMesh>
-      <instancedMesh ref={copas} args={[undefined, undefined, pontos.length]} castShadow receiveShadow>
-        <icosahedronGeometry args={[1, 1]} />
-        <meshStandardMaterial roughness={0.9} flatShading />
-      </instancedMesh>
-    </group>
-  )
-}
-
 function Marcos() {
   const h = useAltura()
   return (
@@ -262,6 +219,15 @@ function Cotas() {
   )
 }
 
+/** Só no desenvolvimento: deixa a cena acessível para os testes no navegador. */
+function Depuracao() {
+  const estado = useThree()
+  useEffect(() => {
+    if (import.meta.env.DEV) (window as unknown as { __cena?: unknown }).__cena = estado
+  }, [estado])
+  return null
+}
+
 function CameraInicial() {
   const { camera } = useThree()
   useEffect(() => {
@@ -278,6 +244,10 @@ function ElementosNoTerreno() {
   return <Elementos3D h={useAltura()} />
 }
 
+function ArvoresNoTerreno() {
+  return <Arvores3D h={useAltura()} />
+}
+
 export default function Scene3D() {
   const camadas = useEstado((e) => e.camadas)
   const ferramenta = useEstado((e) => e.ferramenta)
@@ -286,6 +256,7 @@ export default function Scene3D() {
     <div className="scene3d">
       <Canvas onPointerMissed={() => selecionar(null)} className={ferramenta === 'cota' ? 'cursor-cota' : ''} shadows camera={{ fov: 45, near: 0.5, far: 5000 }} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
         <CameraInicial />
+        <Depuracao />
         <Sky sunPosition={SOL.toArray()} turbidity={6} rayleigh={1.2} mieCoefficient={0.004} />
         <fog attach="fog" args={['#c9d8e6', 400, 1400]} />
         <hemisphereLight args={['#dfeaff', '#4b5a3a', 0.8]} />
@@ -306,7 +277,7 @@ export default function Scene3D() {
         {camadas.divisas && <LinhaNoChao pts={terreno.perimetro} cor="#ff5a5f" largura={3} fechada />}
         {camadas.divisas && <Marcos />}
         {camadas.recuo && <AreaNoChao pts={terreno.recuo.poligono} cor="#ffb020" opacidade={0.35} />}
-        {camadas.mata && <Mata />}
+        {camadas.mata && <ArvoresNoTerreno />}
         {(camadas.relevo || ferramenta === 'cota') && <Cotas />}
         <ElementosNoTerreno />
         <OrbitControls makeDefault target={[centro[0], 5, -centro[1]]} maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={1200} enableDamping />

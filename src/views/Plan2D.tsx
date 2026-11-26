@@ -4,7 +4,8 @@ import { bbox, centroid, dist, type Vec2 } from '../geo/polygon'
 import { contours } from '../geo/elevation'
 import { useEstado } from '../state/store'
 import { useElevacao, useProjeto } from '../state/projeto'
-import { contorno, type Elemento } from '../model/elementos'
+import { anguloEm, contorno, difAngulo, direcaoLado, esticar, girar, type Elemento, type Lado } from '../model/elementos'
+import type { Arvore } from '../model/arvores'
 
 interface Vista { cx: number; cy: number; esc: number } // esc = pixels por metro
 
@@ -18,7 +19,17 @@ const s = ([x, y]: Vec2) => `${x},${-y}`
 const caminho = (pts: Vec2[], fechado = false) => 'M' + pts.map(s).join('L') + (fechado ? 'Z' : '')
 const arred = (v: number) => Math.round(v * 1000) / 1000
 
-type Arrasto = { x: number; y: number; cx: number; cy: number; moveu: boolean; alvo?: { tipo: 'cota' | 'elemento'; id: string; dx: number; dy: number } }
+type Alvo =
+  | { tipo: 'cota' | 'elemento'; id: string; dx: number; dy: number }
+  | { tipo: 'arvores'; originais: Arvore[]; x0: number; y0: number }
+  | { tipo: 'face'; e0: Elemento; lado: Lado; x0: number; y0: number }
+  | { tipo: 'giro'; e0: Elemento; ultimo: number; varrido: number }
+  | { tipo: 'caixa'; x0: number; y0: number; somar: string[] }
+  | { tipo: 'nada' }
+type Arrasto = { x: number; y: number; cx: number; cy: number; moveu: boolean; marcado: boolean; alvo?: Alvo }
+const LADOS: Lado[] = ['x+', 'x-', 'y+', 'y-']
+const metros = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' m'
+const noPasso = (v: number, passo: number) => Math.round(v / passo) * passo
 
 export default function Plan2D() {
   const ref = useRef<SVGSVGElement>(null)
@@ -29,8 +40,10 @@ export default function Plan2D() {
   const setCursor = useEstado((e) => e.setCursor)
   const ferramenta = useEstado((e) => e.ferramenta)
   const elevacao = useElevacao()
-  const { cotas, elementos, selecao, selecionar, adicionarCota, editarCota, editarElemento, marcar } = useProjeto()
+  const { cotas, elementos, arvores, selecao, selecionar, adicionarCota, editarCota, editarElemento, editarArvores, marcar } = useProjeto()
   const arrasto = useRef<Arrasto | null>(null)
+  const [caixaSel, setCaixaSel] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const [etiqueta, setEtiqueta] = useState<{ texto: string; x: number; y: number } | null>(null)
 
   // Enquadra o lote no espaço entre os painéis (esquerdo ~272 px, direito ~304 px).
   const enquadrar = useCallback(() => {
@@ -116,6 +129,8 @@ export default function Plan2D() {
   const f = terreno.fotoAerea
   const selCota = selecao?.tipo === 'cota' ? selecao.id : null
   const selElem = selecao?.tipo === 'elemento' ? selecao.id : null
+  const elemSel = selElem ? elementos.find((e) => e.id === selElem) : undefined
+  const arvSel = useMemo(() => new Set(selecao?.tipo === 'arvores' ? selecao.ids : []), [selecao])
 
   return (
     <div className="plan2d">
@@ -128,21 +143,40 @@ export default function Plan2D() {
           ;(e.currentTarget as Element).setPointerCapture?.(e.pointerId)
           const t = e.target as Element
           const cota = t.getAttribute?.('data-cota')
+          const arv = t.getAttribute?.('data-arvore')
+          const alca = t.closest?.('[data-alca]')?.getAttribute('data-alca')
           const elem = t.closest?.('[data-elemento]')?.getAttribute('data-elemento')
-          let alvo: Arrasto['alvo']
+          let alvo: Alvo | undefined
           const [mx, my] = paraMundo(e.clientX, e.clientY)
-          if (cota && ferramenta !== 'cota') {
-            const c = cotas.find((c) => c.id === cota)!
-            alvo = { tipo: 'cota', id: cota, dx: c.x - mx, dy: c.y - my }
-          } else if (elem && ferramenta !== 'cota') {
-            const el = elementos.find((x) => x.id === elem)!
-            alvo = { tipo: 'elemento', id: elem, dx: el.x - mx, dy: el.y - my }
+          if (ferramenta !== 'cota') {
+            if (alca && elemSel) {
+              alvo = alca === 'giro' ? { tipo: 'giro', e0: elemSel, ultimo: anguloEm(elemSel, [mx, my]), varrido: 0 } : { tipo: 'face', e0: elemSel, lado: alca as Lado, x0: mx, y0: my }
+            } else if (cota) {
+              const c = cotas.find((c) => c.id === cota)!
+              alvo = { tipo: 'cota', id: cota, dx: c.x - mx, dy: c.y - my }
+              selecionar({ tipo: 'cota', id: cota })
+            } else if (elem) {
+              const el = elementos.find((x) => x.id === elem)!
+              alvo = { tipo: 'elemento', id: elem, dx: el.x - mx, dy: el.y - my }
+              selecionar({ tipo: 'elemento', id: elem })
+            } else if (arv) {
+              const atuais = selecao?.tipo === 'arvores' ? selecao.ids : []
+              if (e.shiftKey) {
+                // Shift + clique soma ou tira a árvore da seleção.
+                const ids = atuais.includes(arv) ? atuais.filter((id) => id !== arv) : [...atuais, arv]
+                selecionar(ids.length ? { tipo: 'arvores', ids } : null)
+                alvo = { tipo: 'nada' }
+              } else {
+                const ids = atuais.includes(arv) ? atuais : [arv]
+                if (ids !== atuais) selecionar({ tipo: 'arvores', ids })
+                const set = new Set(ids)
+                alvo = { tipo: 'arvores', originais: arvores.filter((a) => set.has(a.id)), x0: mx, y0: my }
+              }
+            } else if (e.shiftKey) {
+              alvo = { tipo: 'caixa', x0: mx, y0: my, somar: selecao?.tipo === 'arvores' ? selecao.ids : [] }
+            }
           }
-          if (alvo) {
-            selecionar({ tipo: alvo.tipo, id: alvo.id })
-            marcar()
-          }
-          arrasto.current = { x: e.clientX, y: e.clientY, cx: v.cx, cy: v.cy, moveu: false, alvo }
+          arrasto.current = { x: e.clientX, y: e.clientY, cx: v.cx, cy: v.cy, moveu: false, marcado: false, alvo }
         }}
         onPointerMove={(e) => {
           const [x, y] = paraMundo(e.clientX, e.clientY)
@@ -151,16 +185,54 @@ export default function Plan2D() {
           if (!a) return
           if (Math.hypot(e.clientX - a.x, e.clientY - a.y) > 3) a.moveu = true
           if (!a.moveu) return
-          if (a.alvo?.tipo === 'cota') editarCota(a.alvo.id, { x: arred(x + a.alvo.dx), y: arred(y + a.alvo.dy) }, false)
-          else if (a.alvo?.tipo === 'elemento') {
-            // Move em passos de 0,5 m, como no 3D.
-            const passo = (n: number) => Math.round(n * 2) / 2
-            editarElemento(a.alvo.id, { x: passo(x + a.alvo.dx), y: passo(y + a.alvo.dy) }, false)
-          } else setVista({ esc: v.esc, cx: a.cx - (e.clientX - a.x) / v.esc, cy: a.cy + (e.clientY - a.y) / v.esc })
+          const alvo = a.alvo
+          const edita = alvo && alvo.tipo !== 'caixa' && alvo.tipo !== 'nada'
+          if (edita && !a.marcado) {
+            marcar()
+            a.marcado = true
+          }
+          const fino = e.shiftKey
+          if (!alvo) setVista({ esc: v.esc, cx: a.cx - (e.clientX - a.x) / v.esc, cy: a.cy + (e.clientY - a.y) / v.esc })
+          else if (alvo.tipo === 'cota') editarCota(alvo.id, { x: arred(x + alvo.dx), y: arred(y + alvo.dy) }, false)
+          else if (alvo.tipo === 'elemento') {
+            const passo = fino ? 0.05 : 0.5
+            editarElemento(alvo.id, { x: arred(noPasso(x + alvo.dx, passo)), y: arred(noPasso(y + alvo.dy, passo)) }, false)
+          } else if (alvo.tipo === 'arvores') {
+            const passo = fino ? 0.05 : 0.5
+            const dx = noPasso(x - alvo.x0, passo), dy = noPasso(y - alvo.y0, passo)
+            editarArvores(Object.fromEntries(alvo.originais.map((o) => [o.id, { x: arred(o.x + dx), y: arred(o.y + dy) }])), false)
+          } else if (alvo.tipo === 'face') {
+            const dir = direcaoLado(alvo.e0, alvo.lado)
+            const d = (x - alvo.x0) * dir[0] + (y - alvo.y0) * dir[1]
+            const novo = { ...alvo.e0, ...esticar(alvo.e0, alvo.lado, d, fino ? 0.05 : 0.5) }
+            editarElemento(alvo.e0.id, novo, false)
+            const [hx, hy] = pontoLado(novo, alvo.lado, 26 * px)
+            setEtiqueta({ texto: rotuloLado(novo, alvo.lado), x: hx, y: hy })
+          } else if (alvo.tipo === 'giro') {
+            const ang = anguloEm(alvo.e0, [x, y])
+            alvo.varrido += difAngulo(alvo.ultimo, ang)
+            alvo.ultimo = ang
+            const novo = girar(alvo.e0, alvo.varrido, fino ? 1 : 5)
+            editarElemento(alvo.e0.id, novo, false)
+            setEtiqueta({ texto: `Giro ${(novo.rot ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}°`, x: x + 14 * px, y: y + 14 * px })
+          } else if (alvo.tipo === 'caixa') setCaixaSel({ x0: alvo.x0, y0: alvo.y0, x1: x, y1: y })
         }}
         onPointerUp={(e) => {
           const a = arrasto.current
           arrasto.current = null
+          setEtiqueta(null)
+          if (a?.alvo?.tipo === 'caixa') {
+            const c = caixaSel
+            setCaixaSel(null)
+            if (c && a.moveu) {
+              const [x0, x1] = [Math.min(c.x0, c.x1), Math.max(c.x0, c.x1)]
+              const [y0, y1] = [Math.min(c.y0, c.y1), Math.max(c.y0, c.y1)]
+              const dentro = arvores.filter((t) => t.x >= x0 && t.x <= x1 && t.y >= y0 && t.y <= y1).map((t) => t.id)
+              const ids = [...new Set([...a.alvo.somar, ...dentro])]
+              selecionar(ids.length ? { tipo: 'arvores', ids } : null)
+              return
+            }
+          }
           if (!a || a.moveu || a.alvo) return
           if (ferramenta === 'cota') {
             const [x, y] = paraMundo(e.clientX, e.clientY)
@@ -174,10 +246,6 @@ export default function Plan2D() {
           <pattern id="hachura-recuo" width={2} height={2} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1={0} y1={0} x2={0} y2={2} stroke="#ffb020" strokeWidth={0.35} />
           </pattern>
-          <pattern id="padrao-mata" width={6} height={6} patternUnits="userSpaceOnUse">
-            <circle cx={1.5} cy={1.5} r={0.9} fill="#3fa35b" />
-            <circle cx={4.5} cy={4.5} r={0.7} fill="#3fa35b" />
-          </pattern>
           <clipPath id="recorte-lote">
             <path d={caminho(lote, true)} />
           </clipPath>
@@ -188,7 +256,7 @@ export default function Plan2D() {
         {camadas.foto && <image href={f.arquivo} x={f.xMin} y={-f.yMax} width={f.largura} height={f.altura} preserveAspectRatio="none" opacity={0.8} />}
 
         {camadas.mata && (
-          <path d={caminho(terreno.mata.poligono, true)} fill="url(#padrao-mata)" fillOpacity={camadas.foto ? 0.35 : 0.8} stroke="#3fa35b" strokeWidth={1.5 * px} strokeDasharray={`${6 * px} ${4 * px}`} />
+          <path d={caminho(terreno.mata.poligono, true)} fill="#3fa35b" fillOpacity={camadas.foto ? 0.06 : 0.18} stroke="#3fa35b" strokeOpacity={0.7} strokeWidth={1.2 * px} strokeDasharray={`${6 * px} ${4 * px}`} />
         )}
 
         {camadas.recuo && (
@@ -241,9 +309,38 @@ export default function Plan2D() {
           </g>
         )}
 
+        {camadas.mata && (
+          <g className="arvores">
+            {arvores.map((t) => {
+              const sel = arvSel.has(t.id)
+              return <circle key={t.id} data-arvore={t.id} cx={t.x} cy={-t.y} r={t.copa / 2} className={sel ? 'arvore selecionada' : 'arvore'} strokeWidth={(sel ? 2 : 1) * px} />
+            })}
+          </g>
+        )}
+
         {elementos.map((e) => (
           <Pegada key={e.id} e={e} px={px} fonte={fonte} selecionado={e.id === selElem} />
         ))}
+
+        {elemSel && ferramenta !== 'cota' && <Alcas2D e={elemSel} px={px} />}
+
+        {caixaSel && (
+          <rect
+            x={Math.min(caixaSel.x0, caixaSel.x1)}
+            y={-Math.max(caixaSel.y0, caixaSel.y1)}
+            width={Math.abs(caixaSel.x1 - caixaSel.x0)}
+            height={Math.abs(caixaSel.y1 - caixaSel.y0)}
+            className="caixa-selecao"
+            strokeWidth={1.2 * px}
+            strokeDasharray={`${5 * px} ${3 * px}`}
+          />
+        )}
+
+        {etiqueta && (
+          <text x={etiqueta.x} y={-etiqueta.y} fontSize={fonte * 1.05} className="etiqueta-arrasto">
+            {etiqueta.texto}
+          </text>
+        )}
 
         {mostrarRelevo &&
           cotas.map((c) => {
@@ -303,6 +400,52 @@ function Pegada({ e, px, fonte, selecionado }: { e: Elemento; px: number; fonte:
       <text x={e.x} y={-e.y + fonte * 0.9} fontSize={fonte * 0.85} className="rotulo-elemento-medida">
         {e.tipo === 'tanque' ? `Ø ${fmt.m(e.largura, 1)}` : `${fmt.m(e.largura, 1)} × ${fmt.m(e.comprimento, 1)}`}
       </text>
+    </g>
+  )
+}
+
+/** Ponto da face `lado`, afastado `folga` metros para fora. */
+function pontoLado(e: Elemento, lado: Lado, folga = 0): Vec2 {
+  const [dx, dy] = direcaoLado(e, lado)
+  const meio = (lado[0] === 'x' ? e.largura : e.comprimento) / 2 + folga
+  return [e.x + dx * meio, e.y + dy * meio]
+}
+
+function rotuloLado(e: Elemento, lado: Lado) {
+  if (e.tipo === 'tanque') return `Ø ${metros(e.largura)}`
+  if (lado[0] === 'x') return `${e.tipo === 'muro' ? 'Espessura' : 'Largura'} ${metros(e.largura)}`
+  return `Comprimento ${metros(e.comprimento)}`
+}
+
+/** Alças na planta: um puxador em cada face e um para girar, como no 3D. */
+function Alcas2D({ e, px }: { e: Elemento; px: number }) {
+  const [gx, gy] = pontoLado(e, 'y+', 30 * px)
+  const [bx, by] = pontoLado(e, 'y+')
+  return (
+    <g className="alcas">
+      <line x1={bx} y1={-by} x2={gx} y2={-gy} stroke="#fff" strokeOpacity={0.8} strokeWidth={1.5 * px} />
+      {LADOS.map((lado) => {
+        const [x, y] = pontoLado(e, lado)
+        const [dx, dy] = direcaoLado(e, lado)
+        const r = 6 * px
+        // seta pequena apontando para fora da face
+        const ponta: Vec2 = [x + dx * r * 2.2, y + dy * r * 2.2]
+        const base1: Vec2 = [x + dx * r * 1.2 - dy * r * 0.8, y + dy * r * 1.2 + dx * r * 0.8]
+        const base2: Vec2 = [x + dx * r * 1.2 + dy * r * 0.8, y + dy * r * 1.2 - dx * r * 0.8]
+        return (
+          <g key={lado} data-alca={lado} className="alca">
+            <title>{rotuloLado(e, lado)}</title>
+            <circle cx={x} cy={-y} r={r * 2.4} fill="transparent" />
+            <path d={caminho([ponta, base1, base2], true)} className="alca-seta" />
+            <circle cx={x} cy={-y} r={r} className="alca-ponto" strokeWidth={2 * px} />
+          </g>
+        )
+      })}
+      <g data-alca="giro" className="alca giro">
+        <title>Girar (Shift: de 1 em 1 grau)</title>
+        <circle cx={gx} cy={-gy} r={14 * px} fill="transparent" />
+        <circle cx={gx} cy={-gy} r={7 * px} className="alca-giro" strokeWidth={2 * px} />
+      </g>
     </g>
   )
 }

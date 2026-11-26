@@ -15,6 +15,13 @@ da Keuva e gerir a obra. Usuário final: Marlon, não programa; textos da interf
   ao 3D e aos painéis. `rot` em graus anti-horário visto de cima = `rotation.y` no 3D.
   Edição: `editarElemento(id, dados, registrar)`; arrastos chamam `marcar()` uma vez no início
   e editam com `registrar = false`, para o `Cmd+Z` desfazer o arrasto inteiro.
+- Árvores da mata: `src/model/arvores.ts` (geradas sobre o polígono da mata, depois editáveis) em
+  `projeto.ts` (persist v3). Seleção múltipla só para árvores: `{ tipo: 'arvores', ids }`.
+- Edição direta estilo Shapr3D: alças nas faces (`esticar`, a face oposta fica parada), topo
+  (`esticarAltura`) e anel de giro (`girar`), no 3D (`Elementos3D.tsx`, arrastos em `arrasto3d.ts`)
+  e na planta (`Plan2D.tsx`). Passo 0,5 m / 5°, Shift = fino.
+- A foto aérea (`public/terreno-aereo.jpg`) foi limpa das linhas e textos do levantamento; divisas,
+  recuo e medidas aparecem só pelas camadas.
 - Preferências de tela (vista, camadas, exagero) em `src/state/store.ts`, também versionadas.
 - Interface: palco em tela cheia + painéis flutuantes (`src/ui/`), estilo em `src/styles.css`,
   ícones `lucide-react`.
