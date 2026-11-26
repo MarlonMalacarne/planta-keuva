@@ -23,7 +23,8 @@ e (nos próximos passos) terraplanagem, modelagem, importação de modelos e ges
   parada), a seta de cima para a altura e o anel para girar. Shift deixa os passos finos. Também
   dá para digitar posição, giro e medidas exatas no painel da direita. `Cmd+D` duplica,
   `Delete` apaga, `Cmd+Z` desfaz.
-- **Árvores**: ficam só as da reserva legal e da compensação; cada uma é um objeto. Clique para selecionar, Shift + clique para somar,
+- **Árvores**: ficam as da reserva legal, da compensação e da mata fora do pedido de corte; saem
+  só as da área de supressão. Cada árvore é um objeto. Clique para selecionar, Shift + clique para somar,
   Shift + arraste na planta para pegar uma área. Arraste para mover, `Delete` apaga.
 - **Atualização automática**: ao abrir, o app procura versão nova e se instala com um clique.
 

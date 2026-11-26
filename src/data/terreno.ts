@@ -1,5 +1,5 @@
 import raw from './terreno.json'
-import { area, bbox, length, type Vec2 } from '../geo/polygon'
+import { area, bbox, contains, length, type Vec2 } from '../geo/polygon'
 import { ElevationModel, type Cota } from '../geo/elevation'
 
 export interface Lado { de: string; para: string; m: number; curva?: boolean }
@@ -49,11 +49,34 @@ export const extensao = (() => {
   return { minX: f.xMin, minY: f.yMax - f.altura, maxX: f.xMin + f.largura, maxY: f.yMax }
 })()
 
+let mataMantida: number | undefined
+
+/**
+ * Mata que fica: a da foto que não é reserva, compensação nem recuo e não entrou no pedido de
+ * corte. A diferença de polígonos é medida numa grade de 0,5 m (erro de poucos m²).
+ */
+function areaMataMantida() {
+  if (mataMantida !== undefined) return mataMantida
+  const b = bbox(terreno.mata.poligono)
+  const passo = 0.5
+  let n = 0
+  for (let x = b.minX + passo / 2; x < b.maxX; x += passo)
+    for (let y = b.minY + passo / 2; y < b.maxY; y += passo) {
+      const p: Vec2 = [x, y]
+      if (!contains(terreno.mata.poligono, p) || !contains(terreno.perimetro, p)) continue
+      if (contains(terreno.supressao.poligono, p) || contains(terreno.recuo.poligono, p)) continue
+      if (areasProtegidas.some((a) => contains(a.poligono, p))) continue
+      n++
+    }
+  return (mataMantida = n * passo * passo)
+}
+
 export function calcularResumo(elevacao: ElevationModel) {
   const total = area(terreno.perimetro)
   const recuo = area(terreno.recuo.poligono)
   const reserva = area(terreno.reservaLegal.poligono)
   const compensacao = area(terreno.compensacao.poligono)
+  const mata = areaMataMantida()
   const b = bbox(terreno.perimetro)
   let zMin = Infinity, zMax = -Infinity
   for (const p of terreno.perimetro) {
@@ -66,8 +89,10 @@ export function calcularResumo(elevacao: ElevationModel) {
     areaRecuo: recuo,
     areaReserva: reserva,
     areaCompensacao: compensacao,
+    areaMataMantida: mata,
     // O recuo fica do lado da rodovia e as áreas protegidas a leste: não se sobrepõem.
-    areaLivre: total - recuo - reserva - compensacao,
+    // A mata fora do pedido de corte também não entra (só dá para construir ali cortando árvores).
+    areaLivre: total - recuo - reserva - compensacao - mata,
     perimetro: length(terreno.perimetro, true),
     largura: b.width,
     profundidade: b.height,

@@ -5,7 +5,7 @@ import { terreno, extensao } from '../data/terreno'
 import type { Vec2 } from '../geo/polygon'
 import { ElevationModel, type Cota } from '../geo/elevation'
 import { catalogo, difAngulo, lugarLivre, type Elemento, type TipoElemento } from '../model/elementos'
-import { arvoresProtegidas, protegida, proximoIdArvore, type Arvore } from '../model/arvores'
+import { arvoresDaMataMantida, arvoresIniciais, naAreaDeCorte, proximoIdArvore, type Arvore } from '../model/arvores'
 import { areaInvadida, areasDeObra } from '../model/protecao'
 
 export type { Cota, Elemento, Arvore }
@@ -45,7 +45,7 @@ interface Projeto extends Foto {
   /** Muda várias árvores de uma vez (mover um grupo, trocar a altura de todas...). */
   editarArvores: (mudancas: Record<string, Partial<Omit<Arvore, 'id'>>>, registrar?: boolean) => void
   removerArvores: (ids: string[]) => void
-  /** Repõe as árvores da reserva legal e da compensação. */
+  /** Repõe as árvores do terreno (protegidas + mata fora do pedido de corte). */
   restaurarArvores: () => void
 }
 
@@ -77,7 +77,7 @@ export const useProjeto = create<Projeto>()(
       return {
         cotas: cotasDaFoto,
         elementos: [],
-        arvores: arvoresProtegidas(),
+        arvores: arvoresIniciais(),
         historico: [],
         selecao: null,
         aviso: null,
@@ -141,7 +141,7 @@ export const useProjeto = create<Projeto>()(
           const novoId = proximoId('E', get().elementos)
           let copia = { ...e, id: novoId, nome: proximoNome(catalogo[e.tipo].nome, get().elementos), x: e.x + 5, y: e.y - 5 }
           if (areaInvadida(copia)) {
-            const lugar = lugarLivre(e.largura, e.comprimento, get().elementos, areasDeObra, [copia.x, copia.y])
+            const lugar = lugarLivre(e.largura, e.comprimento, get().elementos, { ...areasDeObra, arvores: get().arvores }, [copia.x, copia.y])
             if (!lugar) {
               get().avisar('Não achei lugar livre para a cópia fora das áreas protegidas')
               return null
@@ -166,12 +166,12 @@ export const useProjeto = create<Projeto>()(
           const fora = new Set(ids)
           set({ ...comHistorico({ arvores: get().arvores.filter((a) => !fora.has(a.id)) }), selecao: null })
         },
-        restaurarArvores: () => set({ ...comHistorico({ arvores: arvoresProtegidas() }), selecao: null }),
+        restaurarArvores: () => set({ ...comHistorico({ arvores: arvoresIniciais() }), selecao: null }),
       }
     },
     {
       name: 'planta-keuva:projeto',
-      version: 4,
+      version: 5,
       partialize: ({ cotas, elementos, arvores }) => ({ cotas, elementos, arvores }),
       migrate: migrarProjeto,
     },
@@ -180,11 +180,13 @@ export const useProjeto = create<Projeto>()(
 
 /**
  * v1 (0.1.0) só tinha cotas; v2 (0.2.0) não tinha as árvores como objetos; v3 tinha a mata
- * inteira. A partir da v4 ficam só as árvores da reserva legal e da compensação ambiental.
+ * inteira; v4 só as árvores protegidas. A partir da v5 saem só as árvores do pedido de corte.
  */
 export function migrarProjeto(salvo: unknown, versao = 0): Foto {
   const s = (salvo ?? {}) as Partial<Foto>
-  const arvores = !s.arvores ? arvoresProtegidas() : versao < 4 ? s.arvores.filter(protegida) : s.arvores
+  let arvores = s.arvores ?? arvoresIniciais()
+  if (s.arvores && versao < 4) arvores = arvores.filter((a) => !naAreaDeCorte(a))
+  else if (s.arvores && versao === 4) arvores = [...arvores, ...arvoresDaMataMantida(arvores)]
   return { cotas: s.cotas ?? cotasDaFoto, elementos: s.elementos ?? [], arvores }
 }
 

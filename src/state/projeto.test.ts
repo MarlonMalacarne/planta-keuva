@@ -93,6 +93,15 @@ describe('lugar livre', () => {
     expect(sobrepoe(g, p().elementos[2])).toBe(false)
   })
 
+  it('não coloca obra em cima das árvores', async () => {
+    const { lugarLivre } = await import('../model/elementos')
+    const { areasDeObra } = await import('../model/protecao')
+    const { arvoresIniciais } = await import('../model/arvores')
+    const arvores = arvoresIniciais()
+    const [x, y] = lugarLivre(20, 20, [], { ...areasDeObra, arvores }, [10, 160])!
+    expect(arvores.some((t) => Math.abs(t.x - x) < 10 && Math.abs(t.y - y) < 10)).toBe(false)
+  })
+
   it('não usa a faixa estreita da compensação, mesmo pedindo bem em cima dela', async () => {
     const { lugarLivre } = await import('../model/elementos')
     const { areasDeObra, areaInvadida } = await import('../model/protecao')
@@ -194,12 +203,17 @@ describe('esticar e girar (alças)', () => {
 describe('árvores', () => {
   beforeEach(() => useProjeto.getState().restaurarArvores())
 
-  it('ficam só as árvores da reserva legal e da compensação', async () => {
-    const { protegida } = await import('../model/arvores')
+  it('ficam as árvores protegidas e as da mata fora do pedido de corte', async () => {
+    const { protegida, naMataMantida, naAreaDeCorte } = await import('../model/arvores')
     const { arvores } = useProjeto.getState()
-    expect(arvores.length).toBeGreaterThan(100)
-    expect(arvores.every(protegida)).toBe(true)
+    expect(arvores.filter(protegida).length).toBeGreaterThan(100)
+    expect(arvores.filter(naMataMantida).length).toBeGreaterThan(80)
+    expect(arvores.every((a) => protegida(a) || naMataMantida(a))).toBe(true)
+    expect(arvores.some(naAreaDeCorte)).toBe(false)
     expect(new Set(arvores.map((a) => a.id)).size).toBe(arvores.length)
+    // na emenda entre reserva/compensação e mata, nenhuma nasce encostada na outra
+    const protegidas = arvores.filter(protegida)
+    for (const a of arvores.filter(naMataMantida)) for (const b of protegidas) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(4)
   })
 
   it('move um grupo, apaga e desfaz', () => {
@@ -234,12 +248,24 @@ describe('árvores', () => {
     expect(migrado.arvores.length).toBeGreaterThan(100)
   })
 
-  it('a mata inteira da versão anterior fica só com as árvores protegidas', async () => {
+  it('da mata inteira (v3) saem só as árvores do pedido de corte', async () => {
     const { migrarProjeto } = await import('./projeto')
     const na = (id: string, x: number, y: number) => ({ id, x, y, altura: 9, copa: 6 })
-    const arvores = [na('T1', 70, 100), na('T2', 25, 90), na('T3', -20, 120), na('T4', 0, 160)]
-    expect(migrarProjeto({ arvores }, 3).arvores.map((a) => a.id)).toEqual(['T1', 'T2'])
-    // Da versão 4 em diante, as árvores salvas ficam como estão (inclusive as de paisagismo).
-    expect(migrarProjeto({ arvores }, 4).arvores).toHaveLength(4)
+    // reserva, compensação, supressão, mata fora do corte, campo aberto
+    const arvores = [na('T1', 70, 100), na('T2', 25, 90), na('T3', -20, 120), na('T4', 0, 160), na('T5', 60, 40)]
+    expect(migrarProjeto({ arvores }, 3).arvores.map((a) => a.id)).toEqual(['T1', 'T2', 'T4', 'T5'])
+    // Da versão 5 em diante, as árvores salvas ficam como estão.
+    expect(migrarProjeto({ arvores }, 5).arvores).toHaveLength(5)
+  })
+
+  it('quem estava na v4 (só protegidas) ganha de volta a mata fora do corte', async () => {
+    const { migrarProjeto } = await import('./projeto')
+    const { arvoresProtegidas, naMataMantida } = await import('../model/arvores')
+    const salvas = arvoresProtegidas().slice(0, 50)
+    const migrado = migrarProjeto({ arvores: salvas }, 4).arvores
+    expect(migrado.slice(0, 50)).toEqual(salvas)
+    expect(migrado.slice(50).every(naMataMantida)).toBe(true)
+    expect(migrado.length).toBeGreaterThan(130)
+    expect(new Set(migrado.map((a) => a.id)).size).toBe(migrado.length)
   })
 })

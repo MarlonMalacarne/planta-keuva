@@ -114,14 +114,14 @@ export function difAngulo(a: number, b: number) {
 
 /**
  * Procura um lugar livre para um elemento novo: dentro do lote, sem tocar nas áreas proibidas
- * (recuo, reserva, compensação), sem encostar nos elementos já colocados (folga de 3 m),
- * o mais perto possível de `perto`.
+ * (recuo, reserva, compensação), sem encostar nos elementos já colocados (folga de 3 m) nem
+ * ficar em cima de árvores, o mais perto possível de `perto`.
  */
 export function lugarLivre(
   largura: number,
   comprimento: number,
   existentes: Elemento[],
-  areas: { lote: P[]; proibidas: P[][] },
+  areas: { lote: P[]; proibidas: P[][]; arvores?: { x: number; y: number }[] },
   perto: P,
 ): P | null {
   const folga = 3
@@ -138,6 +138,8 @@ export function lugarLivre(
     const pts: P[] = [[x - w, y - l], [x + w, y - l], [x + w, y + l], [x - w, y + l], [x, y - l], [x, y + l], [x - w, y], [x + w, y], [x, y]]
     if (!pts.every((p) => dentro(areas.lote, p))) continue
     if (caixas.some(([a, b, c, d]) => x + w > a && x - w < c && y + l > b && y - l < d)) continue
+    // Não coloca obra em cima de árvore (1 m de folga para a copa).
+    if (areas.arvores?.some((t) => Math.abs(t.x - x) < w + 1 && Math.abs(t.y - y) < l + 1)) continue
     const caixa = pts.slice(0, 4)
     if (areas.proibidas.some((a) => sobrepoe(caixa, a))) continue
     return [x, y]

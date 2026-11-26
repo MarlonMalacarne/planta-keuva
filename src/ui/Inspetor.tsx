@@ -3,7 +3,8 @@ import { ChevronDown, ChevronRight, Copy, Crosshair, ShieldAlert, Trash2, TreeDe
 import { calcularResumo, terreno, fmt } from '../data/terreno'
 import { useElevacao, useProjeto, type Arvore, type Cota, type Elemento } from '../state/projeto'
 import { areaProjecao, catalogo, coresSugeridas, volume } from '../model/elementos'
-import { areaDoPonto, areaInvadida } from '../model/protecao'
+import { areaInvadida } from '../model/protecao'
+import { situacaoArvore } from '../model/arvores'
 import { CampoNumero } from './Campos'
 import { iconeElemento } from './icones'
 
@@ -108,7 +109,7 @@ function InspetorArvores({ lista }: { lista: Arvore[] }) {
         </span>
         <b className="nome">{varias ? `${lista.length.toLocaleString('pt-BR')} árvores` : `Árvore ${a.id}`}</b>
       </div>
-      <p className="tipo">{varias ? 'Mudanças valem para todas as selecionadas' : (areaDoPonto([a.x, a.y])?.nome ?? 'Fora das áreas protegidas')}</p>
+      <p className="tipo">{varias ? 'Mudanças valem para todas as selecionadas' : situacaoArvore(a)}</p>
       {!varias && (
         <>
           <h4>Posição</h4>
@@ -163,7 +164,7 @@ function InspetorCota({ c }: { c: Cota }) {
 
 function ResumoTerreno() {
   const elevacao = useElevacao()
-  const { cotas, arvores, restaurarCotasDaFoto } = useProjeto()
+  const { cotas, restaurarCotasDaFoto } = useProjeto()
   const r = useMemo(() => calcularResumo(elevacao), [elevacao])
   const [lados, setLados] = useState(false)
   const manuais = cotas.filter((c) => c.origem === 'manual').length
@@ -191,12 +192,12 @@ function ResumoTerreno() {
           <b>{fmt.m2(r.areaCompensacao)}</b>
         </div>
         <div className="cartao">
-          <span>Recuo (5 m)</span>
-          <b>{fmt.m2(r.areaRecuo)}</b>
+          <span>Mata fora do corte</span>
+          <b>{fmt.m2(r.areaMataMantida)}</b>
         </div>
         <div className="cartao">
-          <span>Árvores</span>
-          <b>{arvores.length.toLocaleString('pt-BR')}</b>
+          <span>Recuo (5 m)</span>
+          <b>{fmt.m2(r.areaRecuo)}</b>
         </div>
         <div className="cartao">
           <span>Desnível</span>
@@ -228,7 +229,7 @@ function ResumoTerreno() {
       )}
       <p className="dica">
         Divisas tiradas da foto do levantamento (erro menor que 10 cm). Reserva legal e compensação vêm do laudo agronômico: nelas não se constrói. A
-        supressão de ligustros está autorizada só na área tracejada (0,49 ha).
+        supressão de ligustros está autorizada só na área tracejada (0,49 ha); a mata fora dela continua e não conta como área livre.
         {manuais > 0 && (
           <>
             {' '}

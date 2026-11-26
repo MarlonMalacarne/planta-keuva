@@ -59,7 +59,10 @@ describe('terreno real', () => {
     const listas = [terreno.recuo.poligono, ...areasProtegidas.map((a) => a.poligono)]
     for (let x = -50.25; x < 120; x += 0.5)
       for (let y = 0.25; y < 195; y += 0.5) expect(listas.filter((l) => contains(l, [x, y])).length).toBeLessThan(2)
-    expect(resumo.areaLivre).toBeCloseTo(area(terreno.perimetro) - resumo.areaRecuo - 4000 - 600, -1)
+    // Mata fora do pedido de corte: o triângulo entre a supressão e a linha B–C (~4.100 m²).
+    expect(resumo.areaMataMantida).toBeGreaterThan(3800)
+    expect(resumo.areaMataMantida).toBeLessThan(4500)
+    expect(resumo.areaLivre).toBeCloseTo(area(terreno.perimetro) - resumo.areaRecuo - 4000 - 600 - resumo.areaMataMantida, -1)
   })
   it('sobreposição de polígonos', () => {
     const q = (x: number, y: number, l: number): Vec2[] => [[x, y], [x + l, y], [x + l, y + l], [x, y + l]]

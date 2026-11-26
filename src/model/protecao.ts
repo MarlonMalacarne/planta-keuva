@@ -1,5 +1,5 @@
 import { areasProtegidas, terreno, type AreaProtegida } from '../data/terreno'
-import { contains, sobrepoe, type Vec2 } from '../geo/polygon'
+import { sobrepoe, type Vec2 } from '../geo/polygon'
 import { contorno, type Elemento } from './elementos'
 
 /** Contorno real no chão: o tanque é redondo, o resto é retângulo. */
@@ -16,11 +16,6 @@ export function pegada(e: Elemento): Vec2[] {
 export function areaInvadida(e: Elemento): AreaProtegida | undefined {
   const p = pegada(e)
   return areasProtegidas.find((a) => sobrepoe(p, a.poligono))
-}
-
-/** Área protegida onde fica o ponto (uma árvore, por exemplo). */
-export function areaDoPonto(p: Vec2): AreaProtegida | undefined {
-  return areasProtegidas.find((a) => contains(a.poligono, p))
 }
 
 /** Lote e partes onde não se coloca obra nova: recuo, reserva legal e compensação. */

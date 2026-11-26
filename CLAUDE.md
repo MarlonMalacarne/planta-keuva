@@ -22,8 +22,10 @@ da Keuva e gerir a obra. Usuário final: Marlon, não programa; textos da interf
   ao 3D e aos painéis. `rot` em graus anti-horário visto de cima = `rotation.y` no 3D.
   Edição: `editarElemento(id, dados, registrar)`; arrastos chamam `marcar()` uma vez no início
   e editam com `registrar = false`, para o `Cmd+Z` desfazer o arrasto inteiro.
-- Árvores: `src/model/arvores.ts` (geradas só na reserva e na compensação, depois editáveis) em
-  `projeto.ts` (persist v4: a migração da v3 descarta as árvores fora das áreas protegidas).
+- Árvores: `src/model/arvores.ts` (`arvoresIniciais`: reserva + compensação + mata da foto fora
+  do pedido de corte; depois editáveis) em `projeto.ts` (persist v5: da v3 saem só as árvores da
+  supressão; a v4, que só tinha as protegidas, ganha de volta a mata fora do corte). A mata fora do
+  corte não é bloqueada, mas não conta como área livre e o `lugarLivre` evita árvores.
   Seleção múltipla só para árvores: `{ tipo: 'arvores', ids }`.
 - Edição direta estilo Shapr3D: alças nas faces (`esticar`, a face oposta fica parada), topo
   (`esticarAltura`) e anel de giro (`girar`), no 3D (`Elementos3D.tsx`, arrastos em `arrasto3d.ts`)

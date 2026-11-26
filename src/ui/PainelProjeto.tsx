@@ -33,7 +33,7 @@ export default function PainelProjeto() {
           </button>
         ) : (
           <button className="item recuado apagado" onClick={restaurarArvores}>
-            <TreeDeciduous size={15} /> Repor as árvores protegidas
+            <TreeDeciduous size={15} /> Repor as árvores
           </button>
         )}
       </section>

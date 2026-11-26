@@ -13,7 +13,7 @@ const ferramentas: { id: Ferramenta; nome: string; tecla: string; Icone: typeof 
 
 export default function BarraFerramentas() {
   const { ferramenta, setFerramenta } = useEstado()
-  const { adicionarElemento, adicionarArvore, desfazer, historico, elementos } = useProjeto()
+  const { adicionarElemento, adicionarArvore, desfazer, historico, elementos, arvores } = useProjeto()
   const [menu, setMenu] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -25,16 +25,16 @@ export default function BarraFerramentas() {
   }, [menu])
 
   const adicionar = (tipo: TipoElemento) => {
-    // Coloca o elemento num lugar livre (fora do recuo e das áreas protegidas), perto do centro da parte aberta.
+    // Coloca o elemento num lugar livre (fora do recuo, das áreas protegidas e das árvores), perto do centro da parte aberta.
     const m = catalogo[tipo]
-    const [x, y] = lugarLivre(m.largura, m.comprimento, elementos, areasDeObra, PONTO_INICIAL) ?? PONTO_INICIAL
+    const [x, y] = lugarLivre(m.largura, m.comprimento, elementos, { ...areasDeObra, arvores }, PONTO_INICIAL) ?? PONTO_INICIAL
     adicionarElemento(tipo, x, y)
     setFerramenta('selecionar')
     setMenu(false)
   }
 
   const novaArvore = () => {
-    const [x, y] = lugarLivre(6, 6, elementos, areasDeObra, PONTO_INICIAL) ?? PONTO_INICIAL
+    const [x, y] = lugarLivre(6, 6, elementos, { ...areasDeObra, arvores }, PONTO_INICIAL) ?? PONTO_INICIAL
     adicionarArvore(x, y)
     setFerramenta('selecionar')
     setMenu(false)
